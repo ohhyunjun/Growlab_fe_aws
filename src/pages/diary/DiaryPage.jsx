@@ -28,8 +28,8 @@ function DiaryPage() {
     const [editingDiary, setEditingDiary] = useState(null);
     const [selectedDiary, setSelectedDiary] = useState(null);
     const [form, setForm] = useState({ title: "", content: "", targetDate: "" });
-    const [imageFile, setImageFile] = useState(null);
-    const [imagePreview, setImagePreview] = useState(null);
+    const [imageFiles, setImageFiles] = useState([]);       // ✅ 배열로 변경
+    const [imagePreviews, setImagePreviews] = useState([]); // ✅ 배열로 변경
     const [error, setError] = useState("");
 
     useEffect(() => {
@@ -60,15 +60,20 @@ function DiaryPage() {
     };
 
     const handleImageChange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        setImageFile(file);
-        setImagePreview(URL.createObjectURL(file));
+        const files = Array.from(e.target.files);
+        if (!files.length) return;
+        setImageFiles(prev => [...prev, ...files]);
+        setImagePreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
     };
 
-    const clearImage = () => {
-        setImageFile(null);
-        setImagePreview(null);
+    const removeImage = (idx) => {
+        setImageFiles(prev => prev.filter((_, i) => i !== idx));
+        setImagePreviews(prev => prev.filter((_, i) => i !== idx));
+    };
+
+    const clearImages = () => {
+        setImageFiles([]);
+        setImagePreviews([]);
     };
 
     const handleSubmit = async () => {
@@ -84,9 +89,7 @@ function DiaryPage() {
                 targetDate: `${form.targetDate} 00:00:00`,
             };
             formData.append("diaryData", new Blob([JSON.stringify(diaryData)], { type: "application/json" }));
-            if (imageFile) {
-                formData.append("file", imageFile);
-            }
+            imageFiles.forEach(file => formData.append("files", file)); // ✅ 배열 전체 append
 
             if (editingDiary) {
                 await updateDiaryApi(selectedPlant.id, editingDiary.id, formData);
@@ -96,8 +99,7 @@ function DiaryPage() {
             setShowForm(false);
             setEditingDiary(null);
             setForm({ title: "", content: "", targetDate: "" });
-            setImageFile(null);
-            setImagePreview(null);
+            clearImages();
             fetchDiaries(selectedPlant.id);
         } catch (err) {
             setError("저장 중 오류가 발생했습니다.");
@@ -111,8 +113,8 @@ function DiaryPage() {
             content: diary.content,
             targetDate: diary.targetDate?.slice(0, 10) || "",
         });
-        setImageFile(null);
-        setImagePreview(diary.imageUrl ? `http://localhost:8080${diary.imageUrl}` : null);
+        setImageFiles([]);
+        setImagePreviews(diary.imageUrls?.map(url => `http://localhost:8080${url}`) || []); // ✅ 기존 이미지 미리보기
         setSelectedDiary(null);
         setShowForm(true);
     };
@@ -129,8 +131,7 @@ function DiaryPage() {
     const openForm = () => {
         setEditingDiary(null);
         setForm({ title: "", content: "", targetDate: "" });
-        setImageFile(null);
-        setImagePreview(null);
+        clearImages();
         setSelectedDiary(null);
         setShowForm(true);
     };
@@ -251,33 +252,43 @@ function DiaryPage() {
                                     />
                                 </div>
 
-                                {/* 사진 첨부 */}
+                                {/* 사진 첨부 - 다중 이미지 */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">사진 첨부</label>
-                                    {imagePreview ? (
-                                        <div className="relative w-full">
-                                            <img
-                                                src={imagePreview}
-                                                alt="미리보기"
-                                                className="w-full max-h-48 object-cover rounded-lg border border-gray-200"
-                                            />
-                                            <button
-                                                onClick={clearImage}
-                                                className="absolute top-2 right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-white text-xs hover:bg-red-600"
-                                            >✕</button>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        사진 첨부 {imagePreviews.length > 0 && <span className="text-gray-400 font-normal">({imagePreviews.length}장)</span>}
+                                    </label>
+
+                                    {/* 이미지 미리보기 그리드 */}
+                                    {imagePreviews.length > 0 && (
+                                        <div className="grid grid-cols-3 gap-2 mb-2">
+                                            {imagePreviews.map((src, idx) => (
+                                                <div key={idx} className="relative aspect-square">
+                                                    <img
+                                                        src={src}
+                                                        alt={`미리보기 ${idx + 1}`}
+                                                        className="w-full h-full object-cover rounded-lg border border-gray-200"
+                                                    />
+                                                    <button
+                                                        onClick={() => removeImage(idx)}
+                                                        className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs hover:bg-red-600"
+                                                    >✕</button>
+                                                </div>
+                                            ))}
                                         </div>
-                                    ) : (
-                                        <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-200 rounded-lg cursor-pointer hover:border-green-400 hover:bg-green-50 transition-colors">
-                                            <span className="text-2xl mb-1">📷</span>
-                                            <span className="text-xs text-gray-400">클릭하여 사진 추가</span>
-                                            <input
-                                                type="file"
-                                                accept="image/*"
-                                                onChange={handleImageChange}
-                                                className="hidden"
-                                            />
-                                        </label>
                                     )}
+
+                                    {/* 추가 버튼 */}
+                                    <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-gray-200 rounded-lg cursor-pointer hover:border-green-400 hover:bg-green-50 transition-colors">
+                                        <span className="text-xl mb-0.5">📷</span>
+                                        <span className="text-xs text-gray-400">클릭하여 사진 추가 (여러 장 가능)</span>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            multiple
+                                            onChange={handleImageChange}
+                                            className="hidden"
+                                        />
+                                    </label>
                                 </div>
 
                                 <div className="flex gap-2">
@@ -289,8 +300,7 @@ function DiaryPage() {
                                         onClick={() => {
                                             setShowForm(false);
                                             setEditingDiary(null);
-                                            setImageFile(null);
-                                            setImagePreview(null);
+                                            clearImages();
                                         }}
                                         className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-500 hover:bg-gray-50"
                                     >취소</button>
@@ -315,12 +325,18 @@ function DiaryPage() {
                                     </div>
                                 </div>
                                 <hr className="border-gray-100" />
-                                {selectedDiary.imageUrl && (
-                                    <img
-                                        src={`http://localhost:8080${selectedDiary.imageUrl}`}
-                                        alt="일지 사진"
-                                        className="w-full max-h-64 object-cover rounded-lg border border-gray-100"
-                                    />
+                                {/* ✅ 다중 이미지 그리드 표시 */}
+                                {selectedDiary.imageUrls?.length > 0 && (
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {selectedDiary.imageUrls.map((url, idx) => (
+                                            <img
+                                                key={idx}
+                                                src={`http://localhost:8080${url}`}
+                                                alt={`일지 사진 ${idx + 1}`}
+                                                className="w-full aspect-square object-cover rounded-lg border border-gray-100"
+                                            />
+                                        ))}
+                                    </div>
                                 )}
                                 <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedDiary.content}</p>
                             </div>
