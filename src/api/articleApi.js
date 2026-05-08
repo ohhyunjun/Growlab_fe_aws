@@ -2,9 +2,6 @@ import axios from "axios";
 
 const BASE_URL = "http://localhost:8080/api";
 
-// [DEBUG] articleApi.js 파일이 로드되었습니다! (경로 확인용)
-console.log("📢 [DEBUG] articleApi.js 파일이 로드되었습니다!");
-
 // 1. 인터셉터가 적용될 전용 인스턴스 생성
 const api = axios.create({
     baseURL: BASE_URL,

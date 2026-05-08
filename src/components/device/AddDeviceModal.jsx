@@ -34,8 +34,8 @@ function AddDeviceModal({ onClose, onSuccess }) {
         }
 
         try {
-            await registerDeviceApi(`PLANTI-${form.serial}`, form.nickname);
-            const iconKey = `device_icon_PLANTI-${form.serial}`;
+            await registerDeviceApi(`GROWLAB-${form.serial}`, form.nickname);
+            const iconKey = `device_icon_GROWLAB-${form.serial}`;
             localStorage.setItem(iconKey, String(form.icon));
             console.log("아이콘 저장:", iconKey, "->", form.icon);
             setStep(3);
@@ -77,7 +77,7 @@ function AddDeviceModal({ onClose, onSuccess }) {
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">시리얼 번호 <span className="text-red-400">*</span></label>
                             <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-green-400">
-                                <span className="bg-gray-50 px-3 py-2.5 text-sm text-gray-500 border-r border-gray-200">PLANTI-</span>
+                                <span className="bg-gray-50 px-3 py-2.5 text-sm text-gray-500 border-r border-gray-200">GROWLAB-</span>
                                 <input
                                     type="text"
                                     value={form.serial}
@@ -158,7 +158,7 @@ function AddDeviceModal({ onClose, onSuccess }) {
                             <span className="text-2xl">{ICONS[form.icon]}</span>
                             <div>
                                 <p className="text-sm font-semibold text-gray-800">{form.nickname}</p>
-                                <p className="text-xs text-gray-400">PLANTI-{form.serial} · 연결됨</p>
+                                <p className="text-xs text-gray-400">GROWLAB-{form.serial} · 연결됨</p>
                             </div>
                         </div>
                         <button
