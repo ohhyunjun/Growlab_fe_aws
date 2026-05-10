@@ -78,7 +78,10 @@ function DeviceCard({ device, onDelete, onPlantRegister, onPlantDelete, onOpenMo
                         </div>
                     ) : (
                         <button
-                            onClick={() => onPlantRegister(device.serialNumber)}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onPlantRegister(device.serialNumber);
+                            }}
                             className="flex items-center gap-1 mt-0.5 text-xs text-yellow-600 hover:text-yellow-700"
                         >
                             <span>⚠️ 식물 미등록</span>
