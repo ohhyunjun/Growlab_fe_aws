@@ -19,12 +19,29 @@ function MonitoringPage() {
     const [device, setDevice] = useState(null);
     const [notices, setNotices] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [autoCapture, setAutoCapture] = useState(false);
-    const [isLedOn, setIsLedOn] = useState(true);
-    const [rotationAngle, setRotationAngle] = useState(0);
-    const [cameraHeight, setCameraHeight] = useState(50);
     const [range, setRange] = useState(14);
     const RANGE_OPTIONS = [7, 14, 30, 60];
+
+    const storageKey = `device_settings_${serialNumber}`;
+
+    const getSavedSettings = () => {
+        try {
+            const saved = localStorage.getItem(storageKey);
+            return saved ? JSON.parse(saved) : null;
+        } catch { return null; }
+    };
+
+    const saved = getSavedSettings();
+
+    const [autoCapture, setAutoCapture] = useState(saved?.autoCapture ?? false);
+    const [isLedOn, setIsLedOn] = useState(saved?.isLedOn ?? true);
+    const [rotationAngle, setRotationAngle] = useState(saved?.rotationAngle ?? 0);
+    const [cameraHeight, setCameraHeight] = useState(saved?.cameraHeight ?? 50);
+    const [ledStart, setLedStart] = useState(saved?.ledStart ?? "06:00");
+    const [ledEnd, setLedEnd] = useState(saved?.ledEnd ?? "10:00");
+    const [captureStart, setCaptureStart] = useState(saved?.captureStart ?? "09:00");
+    const [captureInterval, setCaptureInterval] = useState(saved?.captureInterval ?? "3시간");
+    const [saveMessage, setSaveMessage] = useState("");
 
     const growthData = [
         3,4,5,6,7,8,9,10,11,12,
@@ -43,7 +60,6 @@ function MonitoringPage() {
                 const res = await getUserDevicesApi();
                 const found = res.data.find(d => d.serialNumber === serialNumber);
                 setDevice(found);
-
                 const noticeRes = await getAllNoticesApi();
                 setNotices(noticeRes.data);
             } catch (e) { console.error(e); }
@@ -51,6 +67,15 @@ function MonitoringPage() {
         };
         fetch();
     }, [serialNumber]);
+
+    const handleSaveSettings = () => {
+        localStorage.setItem(storageKey, JSON.stringify({
+            autoCapture, isLedOn, rotationAngle, cameraHeight,
+            ledStart, ledEnd, captureStart, captureInterval
+        }));
+        setSaveMessage("✓ 저장되었습니다");
+        setTimeout(() => setSaveMessage(""), 2000);
+    };
 
     if (loading) return (
         <div className="flex items-center justify-center min-h-screen">
@@ -262,41 +287,32 @@ function MonitoringPage() {
 
                     {/* 생육 변화 그래프 */}
                     <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <div className="flex items-center justify-between mb-3">
-                        <h2 className="text-sm font-semibold text-gray-700">📈 생육 변화</h2>
-
-                        {/* 🔥 버튼 */}
-                        <div className="flex gap-1 flex-wrap">
-                        {RANGE_OPTIONS.map((day) => (
-                            <button
-                            key={day}
-                            onClick={() => setRange(day)}
-                            className={`text-xs px-2 py-1 rounded-lg transition-colors
-                                ${
-                                range === day
-                                    ? "bg-green-100 text-green-600 font-bold"
-                                    : "bg-gray-50 text-gray-400 hover:bg-green-50 hover:text-green-600"
-                                }`}
-                            >
-                            {day}일
-                            </button>
-                        ))}
+                        <div className="flex items-center justify-between mb-3">
+                            <h2 className="text-sm font-semibold text-gray-700">📈 생육 변화</h2>
+                            <div className="flex gap-1 flex-wrap">
+                                {RANGE_OPTIONS.map((day) => (
+                                    <button
+                                        key={day}
+                                        onClick={() => setRange(day)}
+                                        className={`text-xs px-2 py-1 rounded-lg transition-colors ${
+                                            range === day
+                                                ? "bg-green-100 text-green-600 font-bold"
+                                                : "bg-gray-50 text-gray-400 hover:bg-green-50 hover:text-green-600"
+                                        }`}
+                                    >{day}일</button>
+                                ))}
+                            </div>
                         </div>
-                    </div>
-
-                    {/* 🔥 그래프 */}
-                    <div className="h-36 flex items-end justify-between gap-1" >
-                        {visibleData.map((v, i) => (
-                        <div
-                            key={i}
-                            className="flex-1 bg-green-100 rounded-t-sm hover:bg-green-400 transition-colors"
-                            style={{ height: `${v * 2}px` }}
-                        />
-                        ))}
-                    </div>
-
-                    {/* 🔥 라벨 */}
-                    <div className="flex justify-between text-xs text-gray-300 mt-1">
+                        <div className="h-36 flex items-end justify-between gap-1">
+                            {visibleData.map((v, i) => (
+                                <div
+                                    key={i}
+                                    className="flex-1 bg-green-100 rounded-t-sm hover:bg-green-400 transition-colors"
+                                    style={{ height: `${v * 2}px` }}
+                                />
+                            ))}
+                        </div>
+                        <div className="flex justify-between text-xs text-gray-300 mt-1">
                             <span>{range - 1}일 전</span>
                             <span>{Math.floor(range / 2)}일 전</span>
                             <span>오늘</span>
@@ -327,23 +343,21 @@ function MonitoringPage() {
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-medium text-gray-600">💡 LED 조명</span>
                                 <div
-                                onClick={() => setIsLedOn(prev => !prev)}
-                                className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors
-                                    ${isLedOn ? "bg-green-500" : "bg-gray-200"}`}>
-                                <div
-                                    className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow
-                                        ${isLedOn ? "left-5" : "left-0.5"}`}
-                                />
-                            </div>
+                                    onClick={() => setIsLedOn(prev => !prev)}
+                                    className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${isLedOn ? "bg-green-500" : "bg-gray-200"}`}>
+                                    <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow ${isLedOn ? "left-5" : "left-0.5"}`} />
+                                </div>
                             </div>
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
                                     <label className="text-xs text-gray-400">시작 시간</label>
-                                    <input type="time" defaultValue="06:00" className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1" />
+                                    <input type="time" value={ledStart} onChange={e => setLedStart(e.target.value)}
+                                        className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1" />
                                 </div>
                                 <div>
                                     <label className="text-xs text-gray-400">종료 시간</label>
-                                    <input type="time" defaultValue="10:00" className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1" />
+                                    <input type="time" value={ledEnd} onChange={e => setLedEnd(e.target.value)}
+                                        className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1" />
                                 </div>
                             </div>
                         </div>
@@ -357,14 +371,9 @@ function MonitoringPage() {
                                 <span className="text-xs text-gray-400">회전 각도</span>
                                 <span className="text-xs font-bold text-green-600">{rotationAngle}°</span>
                             </div>
-                            <input
-                                type="range"
-                                min="0"
-                                max="360"
-                                value={rotationAngle}
+                            <input type="range" min="0" max="360" value={rotationAngle}
                                 onChange={e => setRotationAngle(Number(e.target.value))}
-                                className="w-full accent-green-500"
-                            />
+                                className="w-full accent-green-500" />
                             <button className="w-full mt-2 border border-gray-200 text-xs py-1.5 rounded-lg hover:bg-gray-50 transition-colors">즉시 회전</button>
                         </div>
 
@@ -377,12 +386,9 @@ function MonitoringPage() {
                                 <span className="text-xs text-gray-400">카메라 높이</span>
                                 <span className="text-xs font-bold text-green-600">{cameraHeight}cm</span>
                             </div>
-                            <input type="range" 
-                            min="0" 
-                            max="100" 
-                            value={cameraHeight}
-                            onChange={(e) => setCameraHeight(Number(e.target.value))}
-                            className="w-full accent-green-500" />
+                            <input type="range" min="0" max="100" value={cameraHeight}
+                                onChange={e => setCameraHeight(Number(e.target.value))}
+                                className="w-full accent-green-500" />
                             <button className="w-full mt-2 border border-gray-200 text-xs py-1.5 rounded-lg hover:bg-gray-50 transition-colors">즉시 이동</button>
                         </div>
 
@@ -405,11 +411,13 @@ function MonitoringPage() {
                             <div className="grid grid-cols-2 gap-2 mb-3">
                                 <div>
                                     <label className="text-xs text-gray-400">시작</label>
-                                    <input type="time" defaultValue="09:00" className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1" />
+                                    <input type="time" value={captureStart} onChange={e => setCaptureStart(e.target.value)}
+                                        className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1" />
                                 </div>
                                 <div>
                                     <label className="text-xs text-gray-400">간격</label>
-                                    <select className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1">
+                                    <select value={captureInterval} onChange={e => setCaptureInterval(e.target.value)}
+                                        className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1">
                                         <option>3시간</option>
                                         <option>6시간</option>
                                         <option>12시간</option>
@@ -421,11 +429,14 @@ function MonitoringPage() {
                             </p>
                         </div>
 
+                        {saveMessage && (
+                            <div className="text-xs text-green-600 text-center mb-2 font-medium">{saveMessage}</div>
+                        )}
                         <button
+                            onClick={handleSaveSettings}
                             className="w-full bg-green-600 hover:bg-green-700 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
                             전체 설정 저장
                         </button>
-
                     </div>
 
                     {/* AI 재배 조언 */}
