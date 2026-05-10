@@ -165,10 +165,6 @@ function AddDeviceModal({ onClose, onSuccess }) {
                             onClick={() => { onSuccess(); onClose(); }}
                             className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-lg text-sm transition-colors"
                         >홈으로 돌아가기</button>
-                        <button
-                            onClick={onClose}
-                            className="w-full text-gray-400 text-sm py-1 hover:text-gray-600"
-                        >닫기</button>
                     </div>
                 )}
             </div>
