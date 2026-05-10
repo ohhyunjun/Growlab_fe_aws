@@ -68,6 +68,21 @@ function MonitoringPage() {
         fetch();
     }, [serialNumber]);
 
+    const handleResetSettings = () => {
+        if (!window.confirm("설정을 초기화할까요?")) return;
+        localStorage.removeItem(storageKey);
+        setAutoCapture(false);
+        setIsLedOn(true);
+        setRotationAngle(0);
+        setCameraHeight(50);
+        setLedStart("06:00");
+        setLedEnd("10:00");
+        setCaptureStart("09:00");
+        setCaptureInterval("3시간");
+        setSaveMessage("✓ 초기화되었습니다");
+        setTimeout(() => setSaveMessage(""), 2000);
+    };
+
     const handleSaveSettings = () => {
         localStorage.setItem(storageKey, JSON.stringify({
             autoCapture, isLedOn, rotationAngle, cameraHeight,
@@ -188,7 +203,7 @@ function MonitoringPage() {
                             <span className="text-sm">🔔</span>
                             <h2 className="text-sm font-semibold text-gray-700">최근 알림</h2>
                         </div>
-                        <div className="flex flex-col gap-3 text-xs text-gray-500 overflow-y-auto" style={{ height: "500px" }}>
+                        <div className="flex flex-col gap-3 text-xs text-gray-500 overflow-y-auto" style={{ height: "550px" }}>
                             {notices.length === 0 ? (
                                 <div className="flex items-center justify-center h-full text-gray-300">알림이 없어요</div>
                             ) : (
@@ -432,6 +447,11 @@ function MonitoringPage() {
                         {saveMessage && (
                             <div className="text-xs text-green-600 text-center mb-2 font-medium">{saveMessage}</div>
                         )}
+                        <button
+                            onClick={handleResetSettings}
+                            className="w-full border border-gray-200 text-gray-500 hover:bg-gray-50 text-sm py-2.5 rounded-xl transition-colors mb-2">
+                            설정 초기화
+                        </button>
                         <button
                             onClick={handleSaveSettings}
                             className="w-full bg-green-600 hover:bg-green-700 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
