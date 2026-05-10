@@ -35,6 +35,12 @@ const formatValue = (value, unit) => {
     return `${value}${unit}`;
 };
 
+const SORT_OPTIONS = [
+    { key: "name", label: "이름순" },
+    { key: "newest", label: "최신순" },
+    { key: "oldest", label: "오래된순" },
+];
+
 function DeviceCard({ device, onDelete, onPlantRegister, onPlantDelete, onOpenMonitoring }) {
     const savedIconIndex = localStorage.getItem(`device_icon_${device.serialNumber}`);
     const emoji = (savedIconIndex !== null && savedIconIndex !== undefined)
@@ -42,15 +48,12 @@ function DeviceCard({ device, onDelete, onPlantRegister, onPlantDelete, onOpenMo
         : "🌱";
 
     return (
-        <div 
+        <div
             onClick={() => onOpenMonitoring(device.serialNumber)}
             className="bg-white rounded-xl border border-gray-200 p-4 relative cursor-pointer hover:shadow-md transition"
         >
             <button
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(device.serialNumber);
-                }}
+                onClick={(e) => { e.stopPropagation(); onDelete(device.serialNumber); }}
                 className="absolute top-3 right-3 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs hover:bg-red-600 transition-colors"
             >✕</button>
 
@@ -68,20 +71,14 @@ function DeviceCard({ device, onDelete, onPlantRegister, onPlantDelete, onOpenMo
                                 {STAGE_LABEL[device.plant.plantStage] || device.plant.plantStage}
                             </span>
                             <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onPlantDelete(device.plant.id);
-                                }}
+                                onClick={(e) => { e.stopPropagation(); onPlantDelete(device.plant.id); }}
                                 className="text-xs text-red-400 hover:text-red-600 ml-1"
                                 title="식물 삭제"
                             >🗑</button>
                         </div>
                     ) : (
                         <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onPlantRegister(device.serialNumber);
-                            }}
+                            onClick={(e) => { e.stopPropagation(); onPlantRegister(device.serialNumber); }}
                             className="flex items-center gap-1 mt-0.5 text-xs text-yellow-600 hover:text-yellow-700"
                         >
                             <span>⚠️ 식물 미등록</span>
@@ -115,6 +112,7 @@ function HomePage() {
     const [unreadCount, setUnreadCount] = useState(0);
     const [showAddModal, setShowAddModal] = useState(false);
     const [plantRegisterSerial, setPlantRegisterSerial] = useState(null);
+    const [sortKey, setSortKey] = useState("name");
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -133,17 +131,24 @@ function HomePage() {
         } catch (err) { console.error(err); }
     };
 
+    const getSortedDevices = () => {
+        const copy = [...devices];
+        if (sortKey === "name") {
+            return copy.sort((a, b) => a.deviceNickname.localeCompare(b.deviceNickname, "ko"));
+        } else if (sortKey === "newest") {
+            return copy.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        } else if (sortKey === "oldest") {
+            return copy.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        }
+        return copy;
+    };
+
     const getAverage = (devices, key) => {
-    if (!devices || devices.length === 0) return "-";
-
-    const values = devices
-        .map(d => d[key])
-        .filter(v => v !== null && v !== undefined);
-
-    if (values.length === 0) return "-";
-
-    const avg = values.reduce((a, b) => a + b, 0) / values.length;
-    return avg.toFixed(1);
+        if (!devices || devices.length === 0) return "-";
+        const values = devices.map(d => d[key]).filter(v => v !== null && v !== undefined);
+        if (values.length === 0) return "-";
+        const avg = values.reduce((a, b) => a + b, 0) / values.length;
+        return avg.toFixed(1);
     };
 
     const handleDelete = async (serialNumber) => {
@@ -168,13 +173,15 @@ function HomePage() {
 
     const avgTemp = getAverage(devices, "temperature");
     const avgHumidity = getAverage(devices, "humidity");
-    
+
     const summaryItems = [
         { icon: "🌡", label: "평균 온도", value: avgTemp === "-" ? "-" : `${avgTemp}°C`, color: "text-green-600" },
         { icon: "💧", label: "평균 습도", value: avgHumidity === "-" ? "-" : `${avgHumidity}%`, color: "text-green-600" },
         { icon: "⚡", label: "활성 기기", value: `${devices.length}대`, color: "text-green-600", onClick: null },
         { icon: "🔔", label: "미확인 알림", value: `${unreadCount}건`, color: "text-green-600", onClick: () => navigate("/notifications") },
     ];
+
+    const sortedDevices = getSortedDevices();
 
     return (
         <div className="flex gap-6">
@@ -211,7 +218,25 @@ function HomePage() {
 
             <div className="flex-grow min-w-0">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-bold text-gray-800">My Farm</h2>
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-lg font-bold text-gray-800">My Farm</h2>
+                        {/* 정렬 버튼 */}
+                        <div className="flex gap-1">
+                            {SORT_OPTIONS.map(({ key, label }) => (
+                                <button
+                                    key={key}
+                                    onClick={() => setSortKey(key)}
+                                    className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                                        sortKey === key
+                                            ? "bg-green-600 text-white"
+                                            : "bg-white border border-gray-200 text-gray-500 hover:border-green-400 hover:text-green-600"
+                                    }`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                     <button
                         onClick={() => {
                             const token = localStorage.getItem("token");
@@ -223,7 +248,7 @@ function HomePage() {
                     </button>
                 </div>
 
-                {devices.length === 0 ? (
+                {sortedDevices.length === 0 ? (
                     <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
                         <div className="text-4xl mb-3">🌱</div>
                         <p className="text-gray-400 text-sm">등록된 기기가 없어요</p>
@@ -238,8 +263,8 @@ function HomePage() {
                         </button>
                     </div>
                 ) : (
-                    <div className={`grid grid-cols-2 gap-4 ${devices.length > 4 ? "max-h-[900px] overflow-y-auto pr-1" : ""}`}>
-                        {devices.map(device => (
+                    <div className={`grid grid-cols-2 gap-4 ${sortedDevices.length > 4 ? "max-h-[900px] overflow-y-auto pr-1" : ""}`}>
+                        {sortedDevices.map(device => (
                             <DeviceCard
                                 key={device.serialNumber}
                                 device={device}
