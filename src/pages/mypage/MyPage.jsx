@@ -77,13 +77,12 @@ function MyPage() {
                                                 onClick={async () => {
                                                     try {
                                                         const token = localStorage.getItem("token");
+
                                                         await updateUsernameApi(newUsername, token);
+                                                            alert("아이디가 변경되었습니다. 다시 로그인해주세요.");
+                                                            localStorage.clear();
+                                                            navigate("/login");
 
-                                                        localStorage.setItem("username", newUsername);
-                                                        setUsername(newUsername);
-                                                        setIsEditingName(false);
-
-                                                        alert("아이디 변경 완료");
                                                     } catch (e) {
                                                         console.error(e);
                                                         alert("아이디 변경 실패");
