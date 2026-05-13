@@ -11,3 +11,11 @@ export const registerDeviceApi = (serialNumber, deviceNickname) =>
     axios.post(`${API_BASE}/register`, { serialNumber, deviceNickname }, authHeader());
 export const deleteDeviceApi = (serialNumber) =>
     axios.delete(`${API_BASE}/${serialNumber}`, authHeader());
+
+export const updatePortStatusApi = (serialNumber, portIndex, status) => {
+    return axios.patch(
+        `http://localhost:8080/api/devices/${serialNumber}/ports`, 
+        { portIndex, status }, 
+        authHeader()
+    );
+};
