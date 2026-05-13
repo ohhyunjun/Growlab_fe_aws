@@ -20,7 +20,9 @@ function MonitoringPage() {
     const [notices, setNotices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [range, setRange] = useState(14);
+    const [selectedPort, setSelectedPort] = useState(0);
     const RANGE_OPTIONS = [7, 14, 30, 60];
+    const PORT_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7];
 
     const storageKey = `device_settings_${serialNumber}`;
 
@@ -43,14 +45,18 @@ function MonitoringPage() {
     const [captureInterval, setCaptureInterval] = useState(saved?.captureInterval ?? "3시간");
     const [saveMessage, setSaveMessage] = useState("");
 
-    const growthData = [
-        3,4,5,6,7,8,9,10,11,12,
-        13,14,15,16,17,18,19,20,21,22,
-        23,24,25,26,27,28,29,30,31,32,
-        33,34,35,36,37,38,39,40,41,42,
-        43,44,45,46,47,48,49,50,51,52,
-        53,54,55,56,57,58,59,60
-    ];
+    const growthDataMap = {
+        0: [3,4,5,6,7,8,9,10,11,12,13,14],
+        1: [5,5,6,6,7,7,8,8,9,9,10,10],
+        2: [2,3,3,4,4,5,5,6,6,7,7,8],
+        3: [10,11,12,13,14,15,16,17,18,19,20,21],
+        4: [1,2,2,3,3,4,4,5,5,6,6,7],
+        5: [7,8,8,9,9,10,10,11,11,12,12,13],
+        6: [4,5,6,7,8,9,10,11,12,13,14,15],
+        7: [6,6,7,7,8,8,9,9,10,10,11,11],
+    };
+
+    const growthData = growthDataMap[selectedPort] || [];
 
     const visibleData = growthData.slice(-range);
 
@@ -60,6 +66,9 @@ function MonitoringPage() {
                 const res = await getUserDevicesApi();
                 const found = res.data.find(d => d.serialNumber === serialNumber);
                 setDevice(found);
+                if (found?.plants?.length > 0) {
+                    setSelectedPort(found.plants[0].portIndex);
+                }
                 const noticeRes = await getAllNoticesApi();
                 setNotices(noticeRes.data);
             } catch (e) { console.error(e); }
@@ -67,6 +76,15 @@ function MonitoringPage() {
         };
         fetch();
     }, [serialNumber]);
+
+    const handleSaveSettings = () => {
+        localStorage.setItem(storageKey, JSON.stringify({
+            autoCapture, isLedOn, rotationAngle, cameraHeight,
+            ledStart, ledEnd, captureStart, captureInterval
+        }));
+        setSaveMessage("✓ 저장되었습니다");
+        setTimeout(() => setSaveMessage(""), 2000);
+    };
 
     const handleResetSettings = () => {
         if (!window.confirm("설정을 초기화할까요?")) return;
@@ -83,15 +101,6 @@ function MonitoringPage() {
         setTimeout(() => setSaveMessage(""), 2000);
     };
 
-    const handleSaveSettings = () => {
-        localStorage.setItem(storageKey, JSON.stringify({
-            autoCapture, isLedOn, rotationAngle, cameraHeight,
-            ledStart, ledEnd, captureStart, captureInterval
-        }));
-        setSaveMessage("✓ 저장되었습니다");
-        setTimeout(() => setSaveMessage(""), 2000);
-    };
-
     if (loading) return (
         <div className="flex items-center justify-center min-h-screen">
             <div className="text-gray-400 text-sm">로딩 중...</div>
@@ -104,8 +113,9 @@ function MonitoringPage() {
         </div>
     );
 
-    const plant = device.plant;
-    const emoji = plant ? (SPECIES_EMOJI[plant.species] || "🌱") : "🌱";
+    const selectedPlant = device.plants?.find(p => p.portIndex === selectedPort) ?? null;
+    const emoji = selectedPlant ? (SPECIES_EMOJI[selectedPlant.species] || "🌱") : "🌱";
+
     const temp = device.temperature;
     const humidity = device.humidity;
     const waterLevel = device.waterLevel;
@@ -118,18 +128,14 @@ function MonitoringPage() {
     const phOk = ph !== null && ph >= 5.5 && ph <= 7.0;
     const ecOk = ec !== null && ec >= 1.0 && ec <= 2.5;
 
-    const daysSincePlanted = plant?.plantedAt
-        ? Math.floor((new Date() - new Date(plant.plantedAt)) / (1000 * 60 * 60 * 24))
+    const daysSincePlanted = selectedPlant?.plantedAt
+        ? Math.floor((new Date() - new Date(selectedPlant.plantedAt)) / (1000 * 60 * 60 * 24))
         : null;
 
     return (
         <div className="min-h-screen bg-gray-50">
-            {/* 상단 헤더 */}
             <div className="bg-white border-b border-gray-100 px-6 py-3 flex items-center gap-3">
-                <button
-                    onClick={() => navigate("/")}
-                    className="text-gray-400 hover:text-gray-600 text-sm flex items-center gap-1"
-                >←</button>
+                <button onClick={() => navigate("/")} className="text-gray-400 hover:text-gray-600 text-sm">←</button>
                 <span className="font-semibold text-gray-800 text-sm">{device.deviceNickname} 모니터링</span>
                 <span className="flex items-center gap-1 text-xs text-green-500 font-medium">
                     <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block animate-pulse"></span>
@@ -142,23 +148,22 @@ function MonitoringPage() {
                 {/* ───── 좌측 사이드바 ───── */}
                 <div className="col-span-3 flex flex-col gap-3">
 
-                    {/* 식물 정보 */}
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                         <div className="flex items-center gap-3 mb-4">
                             <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center text-2xl">
                                 {emoji}
                             </div>
                             <div>
-                                <div className="font-bold text-gray-800 text-sm">{plant?.name || "미등록"}</div>
-                                <div className="text-xs text-gray-400">{serialNumber}</div>
+                                <div className="font-bold text-gray-800 text-sm">{selectedPlant?.name || "미등록"}</div>
+                                <div className="text-xs text-gray-400">{serialNumber} · 포트 {selectedPort + 1}</div>
                             </div>
                         </div>
-                        {plant ? (
+                        {selectedPlant ? (
                             <div className="flex flex-col gap-2 text-xs">
                                 {[
                                     { label: "재배 일수", value: daysSincePlanted !== null ? `${daysSincePlanted}일차` : "-" },
-                                    { label: "생육 단계", value: STAGE_LABEL[plant.plantStage] || plant.plantStage },
-                                    { label: "종류", value: plant.species || "-" },
+                                    { label: "생육 단계", value: STAGE_LABEL[selectedPlant.plantStage] || selectedPlant.plantStage },
+                                    { label: "종류", value: selectedPlant.species || "-" },
                                 ].map(({ label, value }) => (
                                     <div key={label} className="flex justify-between items-center py-1.5 border-b border-gray-50 last:border-0">
                                         <span className="text-gray-400">{label}</span>
@@ -167,37 +172,30 @@ function MonitoringPage() {
                                 ))}
                             </div>
                         ) : (
-                            <p className="text-xs text-gray-400 text-center py-2">식물 미등록</p>
+                            <p className="text-xs text-gray-400 text-center py-2">이 포트에 식물이 없어요</p>
                         )}
                     </div>
 
-                    {/* Vision AI 분석 */}
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                         <div className="flex items-center gap-2 mb-3">
                             <span className="text-sm">🔍</span>
                             <h2 className="text-sm font-semibold text-gray-700">Vision AI 분석</h2>
                         </div>
                         <div className="flex flex-col gap-2 text-xs">
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-400">생육 상태</span>
-                                <span className="text-green-500 font-medium">✓ 정상</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-400">병충해</span>
-                                <span className="text-green-500 font-medium">✓ 이상없음</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-400">성장 속도</span>
-                                <span className="text-blue-500 font-medium">+12% 빠름</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-400">종합 평가</span>
-                                <span className="text-green-500 font-medium">85점 / 우수</span>
-                            </div>
+                            {[
+                                { label: "생육 상태", value: "✓ 정상", color: "text-green-500" },
+                                { label: "병충해", value: "✓ 이상없음", color: "text-green-500" },
+                                { label: "성장 속도", value: "+12% 빠름", color: "text-blue-500" },
+                                { label: "종합 평가", value: "85점 / 우수", color: "text-green-500" },
+                            ].map(({ label, value, color }) => (
+                                <div key={label} className="flex justify-between items-center">
+                                    <span className="text-gray-400">{label}</span>
+                                    <span className={`font-medium ${color}`}>{value}</span>
+                                </div>
+                            ))}
                         </div>
                     </div>
 
-                    {/* 최근 알림 */}
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm flex flex-col">
                         <div className="flex items-center gap-2 mb-3">
                             <span className="text-sm">🔔</span>
@@ -223,7 +221,6 @@ function MonitoringPage() {
                 {/* ───── 중앙 콘텐츠 ───── */}
                 <div className="col-span-6 flex flex-col gap-4">
 
-                    {/* 온도 / 습도 */}
                     <div className="grid grid-cols-2 gap-4">
                         <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
                             <div className="flex items-center justify-between mb-2">
@@ -237,7 +234,6 @@ function MonitoringPage() {
                                 {tempOk ? "✓ 적정 범위" : temp !== null ? "⚠ 범위 벗어남" : "데이터 없음"}
                             </div>
                         </div>
-
                         <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs text-gray-400 font-medium tracking-widest">HUMIDITY</span>
@@ -252,16 +248,12 @@ function MonitoringPage() {
                         </div>
                     </div>
 
-                    {/* 양액 시스템 모니터링 */}
                     <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
                         <h2 className="text-sm font-semibold text-gray-700 mb-4">📊 양액 시스템 모니터링</h2>
                         <div className="grid grid-cols-3 gap-4">
                             <div className="flex flex-col items-center gap-2">
                                 <div className="w-16 h-28 rounded-xl border-2 border-blue-100 bg-blue-50 relative overflow-hidden flex flex-col justify-end">
-                                    <div
-                                        className="bg-blue-400 w-full rounded-b-lg transition-all"
-                                        style={{ height: `${waterLevel ?? 0}%` }}
-                                    />
+                                    <div className="bg-blue-400 w-full rounded-b-lg transition-all" style={{ height: `${waterLevel ?? 0}%` }} />
                                     <div className="absolute inset-0 flex items-center justify-center">
                                         <span className="text-sm font-bold text-blue-700">
                                             {waterLevel !== null && waterLevel !== undefined ? `${waterLevel}%` : "-"}
@@ -273,24 +265,18 @@ function MonitoringPage() {
                                     {waterLevel !== null ? (waterOk ? "충분" : "부족") : "-"}
                                 </span>
                             </div>
-
                             <div className="flex flex-col items-center justify-center gap-2">
                                 <div className="w-16 h-16 rounded-full border-4 border-green-100 flex items-center justify-center bg-green-50">
-                                    <span className="text-lg font-bold text-green-600">
-                                        {ph !== null && ph !== undefined ? ph : "-"}
-                                    </span>
+                                    <span className="text-lg font-bold text-green-600">{ph ?? "-"}</span>
                                 </div>
                                 <span className="text-xs text-gray-400">PH LEVEL</span>
                                 <span className={`text-xs font-medium ${phOk ? "text-green-500" : "text-yellow-500"}`}>
                                     {ph !== null ? (phOk ? "적정" : "조정 필요") : "-"}
                                 </span>
                             </div>
-
                             <div className="flex flex-col items-center justify-center gap-2">
                                 <div className="w-16 h-16 rounded-full border-4 border-purple-100 flex items-center justify-center bg-purple-50">
-                                    <span className="text-lg font-bold text-purple-600">
-                                        {ec !== null && ec !== undefined ? ec : "-"}
-                                    </span>
+                                    <span className="text-lg font-bold text-purple-600">{ec ?? "-"}</span>
                                 </div>
                                 <span className="text-xs text-gray-400">TDS (PPM)</span>
                                 <span className={`text-xs font-medium ${ecOk ? "text-green-500" : "text-yellow-500"}`}>
@@ -304,47 +290,60 @@ function MonitoringPage() {
                     <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
                         <div className="flex items-center justify-between mb-3">
                             <h2 className="text-sm font-semibold text-gray-700">📈 생육 변화</h2>
-                            <div className="flex gap-1 flex-wrap">
-                                {RANGE_OPTIONS.map((day) => (
-                                    <button
-                                        key={day}
-                                        onClick={() => setRange(day)}
+                            <div className="flex gap-1">
+                                {RANGE_OPTIONS.map(day => (
+                                    <button key={day} onClick={() => setRange(day)}
                                         className={`text-xs px-2 py-1 rounded-lg transition-colors ${
-                                            range === day
-                                                ? "bg-green-100 text-green-600 font-bold"
-                                                : "bg-gray-50 text-gray-400 hover:bg-green-50 hover:text-green-600"
-                                        }`}
-                                    >{day}일</button>
+                                            range === day ? "bg-green-100 text-green-600 font-bold" : "bg-gray-50 text-gray-400 hover:bg-green-50 hover:text-green-600"
+                                        }`}>{day}일</button>
                                 ))}
                             </div>
                         </div>
-                        <div className="h-36 flex items-end justify-between gap-1">
-                            {visibleData.map((v, i) => (
-                                <div
-                                    key={i}
-                                    className="flex-1 bg-green-100 rounded-t-sm hover:bg-green-400 transition-colors"
-                                    style={{ height: `${v * 2}px` }}
-                                />
-                            ))}
-                        </div>
-                        <div className="flex justify-between text-xs text-gray-300 mt-1">
-                            <span>{range - 1}일 전</span>
-                            <span>{Math.floor(range / 2)}일 전</span>
-                            <span>오늘</span>
-                        </div>
-                    </div>
 
-                    {/* 수확량 그래프 */}
-                    <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                        <h2 className="text-sm font-semibold text-gray-700 mb-3">🌾 예상 수확량 추이</h2>
-                        <div className="h-36 flex items-end justify-around gap-2">
-                            {[200, 350, 500, 700, 850, 1000, 1150, 1200].map((v, i) => (
-                                <div key={i} className="flex flex-col items-center gap-1 flex-1">
-                                    <div className="w-full bg-green-400 rounded-t-sm hover:bg-green-500 transition-colors" style={{ height: `${v / 10}px` }} />
-                                    <span className="text-xs text-gray-300">{i + 1}주차</span>
-                                </div>
-                            ))}
+                        {/* 포트 선택 버튼 */}
+                        <div className="flex gap-1 mb-3 flex-wrap">
+                            {PORT_OPTIONS.map(port => {
+                                const portPlant = device.plants?.find(p => p.portIndex === port);
+                                return (
+                                    <button key={port} onClick={() => setSelectedPort(port)}
+                                        className={`text-xs px-2.5 py-1 rounded-lg transition-colors border ${
+                                            selectedPort === port
+                                                ? "bg-green-600 text-white border-green-600"
+                                                : portPlant
+                                                    ? "bg-green-50 text-green-600 border-green-200 hover:bg-green-100"
+                                                    : "bg-gray-50 text-gray-300 border-gray-100"
+                                        }`}
+                                    >
+                                        {portPlant ? `${port + 1} ${SPECIES_EMOJI[portPlant.species] || "🌱"}` : `${port + 1}`}
+                                    </button>
+                                );
+                            })}
                         </div>
+
+                        <div className="text-xs text-gray-400 mb-2">
+                            포트 {selectedPort + 1} · {selectedPlant ? selectedPlant.name : "식물 미등록"}
+                        </div>
+
+                        {selectedPlant ? (
+                            <>
+                                <div className="h-36 flex items-end justify-between gap-1">
+                                    {visibleData.map((v, i) => (
+                                        <div key={i}
+                                            className="flex-1 bg-green-100 rounded-t-sm hover:bg-green-400 transition-colors"
+                                            style={{ height: `${v * 2}px` }} />
+                                    ))}
+                                </div>
+                                <div className="flex justify-between text-xs text-gray-300 mt-1">
+                                    <span>{range - 1}일 전</span>
+                                    <span>{Math.floor(range / 2)}일 전</span>
+                                    <span>오늘</span>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="h-36 flex items-center justify-center text-gray-300 text-sm">
+                                이 포트에 등록된 식물이 없어요
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -353,12 +352,10 @@ function MonitoringPage() {
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                         <h2 className="text-sm font-semibold text-gray-700 mb-4">⚙️ 시스템 제어</h2>
 
-                        {/* LED 조명 */}
                         <div className="mb-4 pb-4 border-b border-gray-50">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-medium text-gray-600">💡 LED 조명</span>
-                                <div
-                                    onClick={() => setIsLedOn(prev => !prev)}
+                                <div onClick={() => setIsLedOn(prev => !prev)}
                                     className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${isLedOn ? "bg-green-500" : "bg-gray-200"}`}>
                                     <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow ${isLedOn ? "left-5" : "left-0.5"}`} />
                                 </div>
@@ -377,7 +374,6 @@ function MonitoringPage() {
                             </div>
                         </div>
 
-                        {/* 타워 회전 */}
                         <div className="mb-4 pb-4 border-b border-gray-50">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-medium text-gray-600">🔄 타워 회전 (스텝모터)</span>
@@ -392,7 +388,6 @@ function MonitoringPage() {
                             <button className="w-full mt-2 border border-gray-200 text-xs py-1.5 rounded-lg hover:bg-gray-50 transition-colors">즉시 회전</button>
                         </div>
 
-                        {/* ESP32-CAM */}
                         <div className="mb-4 pb-4 border-b border-gray-50">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-medium text-gray-600">📷 ESP32-CAM Z축</span>
@@ -407,7 +402,6 @@ function MonitoringPage() {
                             <button className="w-full mt-2 border border-gray-200 text-xs py-1.5 rounded-lg hover:bg-gray-50 transition-colors">즉시 이동</button>
                         </div>
 
-                        {/* 자동 촬영 스케줄 */}
                         <div className={`mb-4 rounded-xl p-3 transition-colors ${autoCapture ? "bg-green-50 border border-green-100" : "bg-gray-50"}`}>
                             <div className="flex items-center justify-between mb-3">
                                 <span className={`text-xs font-medium ${autoCapture ? "text-green-700" : "text-gray-600"}`}>
@@ -416,10 +410,8 @@ function MonitoringPage() {
                             </div>
                             <div className="flex items-center justify-between mb-3">
                                 <span className="text-xs font-medium text-gray-700">자동 촬영</span>
-                                <div
-                                    onClick={() => setAutoCapture(prev => !prev)}
-                                    className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${autoCapture ? "bg-green-500" : "bg-gray-200"}`}
-                                >
+                                <div onClick={() => setAutoCapture(prev => !prev)}
+                                    className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${autoCapture ? "bg-green-500" : "bg-gray-200"}`}>
                                     <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow ${autoCapture ? "left-5" : "left-0.5"}`} />
                                 </div>
                             </div>
@@ -447,19 +439,16 @@ function MonitoringPage() {
                         {saveMessage && (
                             <div className="text-xs text-green-600 text-center mb-2 font-medium">{saveMessage}</div>
                         )}
-                        <button
-                            onClick={handleResetSettings}
+                        <button onClick={handleResetSettings}
                             className="w-full border border-gray-200 text-gray-500 hover:bg-gray-50 text-sm py-2.5 rounded-xl transition-colors mb-2">
                             설정 초기화
                         </button>
-                        <button
-                            onClick={handleSaveSettings}
+                        <button onClick={handleSaveSettings}
                             className="w-full bg-green-600 hover:bg-green-700 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
                             전체 설정 저장
                         </button>
                     </div>
 
-                    {/* AI 재배 조언 */}
                     <div className="bg-green-50 rounded-2xl border border-green-100 p-4 overflow-y-auto" style={{ height: "200px" }}>
                         <div className="flex items-center gap-2 mb-3">
                             <span className="text-sm">🤖</span>
