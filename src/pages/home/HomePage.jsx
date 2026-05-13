@@ -41,11 +41,14 @@ const SORT_OPTIONS = [
     { key: "oldest", label: "오래된순" },
 ];
 
-function DeviceCard({ device, onDelete, onPlantRegister, onPlantDelete, onOpenMonitoring }) {
+function DeviceCard({ device, onDelete, onPlantRegister, onPlantDelete, onPortToggle, onOpenMonitoring }) {
     const savedIconIndex = localStorage.getItem(`device_icon_${device.serialNumber}`);
     const emoji = (savedIconIndex !== null && savedIconIndex !== undefined)
         ? (ICONS[parseInt(savedIconIndex)] || "🌱")
         : "🌱";
+
+    // 기기의 대표 식물 정보 (이제 기기당 하나)
+    const mainPlant = device.plant; 
 
     return (
         <div
@@ -54,38 +57,72 @@ function DeviceCard({ device, onDelete, onPlantRegister, onPlantDelete, onOpenMo
         >
             <button
                 onClick={(e) => { e.stopPropagation(); onDelete(device.serialNumber); }}
-                className="absolute top-3 right-3 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs hover:bg-red-600 transition-colors"
+                className="absolute top-3 right-3 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs hover:bg-red-600 transition-colors z-10"
             >✕</button>
 
-            <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center gap-3 mb-4">
                 <span className="text-3xl">{emoji}</span>
                 <div>
                     <div className="font-semibold text-gray-800 text-sm">{device.deviceNickname}</div>
                     <div className="text-xs text-gray-400">{device.serialNumber}</div>
-                    {device.plant ? (
+                    
+                    {/* 대표 식물 정보 표시 */}
+                    {mainPlant ? (
                         <div className="flex items-center gap-1 mt-0.5">
-                            <span className="text-xs text-gray-600">
-                                {SPECIES_EMOJI[device.plant.species] || "🌱"} {device.plant.name}
-                            </span>
-                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">
-                                {STAGE_LABEL[device.plant.plantStage] || device.plant.plantStage}
+                            <span className="text-xs text-gray-600 font-medium">
+                                {SPECIES_EMOJI[mainPlant.species] || "🌱"} {mainPlant.name}
                             </span>
                             <button
-                                onClick={(e) => { e.stopPropagation(); onPlantDelete(device.plant.id); }}
-                                className="text-xs text-red-400 hover:text-red-600 ml-1"
-                                title="식물 삭제"
-                            >🗑</button>
+                                onClick={(e) => { e.stopPropagation(); onPlantDelete(mainPlant.id); }}
+                                className="text-[10px] text-red-400 hover:text-red-600 ml-1 underline"
+                            >품종변경</button>
                         </div>
                     ) : (
                         <button
                             onClick={(e) => { e.stopPropagation(); onPlantRegister(device.serialNumber); }}
-                            className="flex items-center gap-1 mt-0.5 text-xs text-yellow-600 hover:text-yellow-700"
+                            className="flex items-center gap-1 mt-0.5 text-[11px] text-yellow-600 animate-pulse"
                         >
                             <span>⚠️ 식물 미등록</span>
-                            <span className="underline">클릭하여 등록</span>
+                            <span className="underline">클릭하여 품종 선택</span>
                         </button>
                     )}
                 </div>
+            </div>
+
+            {/* 8개 포트 활성화/비활성화 그리드 */}
+            <div className="grid grid-cols-4 gap-2 p-2 bg-gray-50 rounded-lg border border-gray-100 mb-4">
+                {[...Array(8)].map((_, index) => {
+                    // device.activePorts 같은 배열이 있다고 가정하거나 status 필드 활용
+                    const isActive = device.activePorts?.includes(index);
+
+                    return (
+                        <div
+                            key={index}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (!mainPlant) {
+                                    alert("식물을 먼저 등록해주세요.");
+                                    return;
+                                }
+                                onPortToggle(device.serialNumber, index, !isActive);
+                            }}
+                            className={`flex flex-col items-center justify-center h-14 rounded-md transition-all border ${
+                                isActive 
+                                ? "bg-green-50 border-green-200 shadow-sm" 
+                                : "bg-gray-100 border-gray-200 opacity-60 hover:opacity-100"
+                            }`}
+                        >
+                            <span className={`text-[8px] font-bold ${isActive ? "text-green-600" : "text-gray-400"}`}>
+                                P{index + 1}
+                            </span>
+                            {mainPlant && isActive ? (
+                                <span className="text-lg">{SPECIES_EMOJI[mainPlant.species] || "🌿"}</span>
+                            ) : (
+                                <span className="text-gray-400 text-xs font-medium">{isActive ? "ON" : "OFF"}</span>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-center">
@@ -113,7 +150,7 @@ function HomePage() {
     const [showAddModal, setShowAddModal] = useState(false);
     const [plantRegisterSerial, setPlantRegisterSerial] = useState(null);
     const [sortKey, setSortKey] = useState("name");
-    const navigate = useNavigate();
+    const navigate = useNavigate(); 
 
     useEffect(() => {
         const token = localStorage.getItem("token");
@@ -165,6 +202,18 @@ function HomePage() {
             await deletePlantApi(plantId);
             await fetchDevices();
         } catch (err) { console.error(err); }
+    };
+
+    // 포트 활성화/비활성화 토글 핸들러
+    const handlePortToggle = async (serialNumber, portIndex, nextStatus) => {
+        try {
+            // 예: await togglePortApi(serialNumber, portIndex, nextStatus);
+            // 실제 API에 맞춰 수정 필요
+            console.log(`${serialNumber}의 ${portIndex}번 포트를 ${nextStatus ? "활성화" : "비활성화"}`);
+            await fetchDevices(); // 상태 갱신
+        } catch (err) {
+            console.error("포트 상태 변경 실패:", err);
+            alert("포트 제어에 실패했습니다."); }
     };
 
     const handlePlantRegister = (serialNumber) => {
@@ -271,6 +320,7 @@ function HomePage() {
                                 onDelete={handleDelete}
                                 onPlantRegister={handlePlantRegister}
                                 onPlantDelete={handlePlantDelete}
+                                onPortToggle={handlePortToggle}
                                 onOpenMonitoring={(serial) => navigate(`/monitoring/${serial}`)}
                             />
                         ))}
@@ -281,10 +331,7 @@ function HomePage() {
             {showAddModal && (
                 <AddDeviceModal
                     onClose={() => setShowAddModal(false)}
-                    onSuccess={async () => {
-                        setShowAddModal(false);
-                        await fetchDevices();
-                    }}
+                    onSuccess={fetchDevices}
                 />
             )}
 
@@ -292,7 +339,7 @@ function HomePage() {
                 <SelectPlantModal
                     serialNumber={plantRegisterSerial}
                     onClose={() => setPlantRegisterSerial(null)}
-                    onSuccess={async () => {
+                    onSuccess={async() => {
                         setPlantRegisterSerial(null);
                         await fetchDevices();
                     }}
