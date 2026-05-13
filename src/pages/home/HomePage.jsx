@@ -79,7 +79,7 @@ function DeviceCard({ device, onDelete, onPlantRegister, onPlantDelete, onPortTo
                         </div>
                     ) : (
                         <button
-                            onClick={(e) => { e.stopPropagation(); onPlantRegister(device.serialNumber); }}
+                            onClick={(e) => { e.stopPropagation(); onPlantRegister(device.serialNumber, 0); }}
                             className="flex items-center gap-1 mt-0.5 text-[11px] text-yellow-600 animate-pulse"
                         >
                             <span>⚠️ 식물 미등록</span>
@@ -149,6 +149,7 @@ function HomePage() {
     const [unreadCount, setUnreadCount] = useState(0);
     const [showAddModal, setShowAddModal] = useState(false);
     const [plantRegisterSerial, setPlantRegisterSerial] = useState(null);
+    const [selectedPort, setSelectedPort] = useState(null);
     const [sortKey, setSortKey] = useState("name");
     const navigate = useNavigate(); 
 
@@ -216,8 +217,9 @@ function HomePage() {
             alert("포트 제어에 실패했습니다."); }
     };
 
-    const handlePlantRegister = (serialNumber) => {
+    const handlePlantRegister = (serialNumber, portIndex) => {
         setPlantRegisterSerial(serialNumber);
+        setSelectedPort(portIndex);
     };
 
     const avgTemp = getAverage(devices, "temperature");
@@ -338,6 +340,7 @@ function HomePage() {
             {plantRegisterSerial && (
                 <SelectPlantModal
                     serialNumber={plantRegisterSerial}
+                    portIndex={selectedPort}
                     onClose={() => setPlantRegisterSerial(null)}
                     onSuccess={async() => {
                         setPlantRegisterSerial(null);

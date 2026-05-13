@@ -39,7 +39,7 @@
         HARD: "bg-red-100 text-red-600",
     };
 
-    function SelectPlantModal({ serialNumber, onClose, onSuccess }) {
+    function SelectPlantModal({ serialNumber, portIndex, onClose, onSuccess }) {
         const [species, setSpecies] = useState([]);
         const [selected, setSelected] = useState(null);
         const [search, setSearch] = useState("");
@@ -85,6 +85,7 @@
                     maturedAt: null,
                     speciesId: selected.id,
                     serialNumber: serialNumber,
+                    portIndex: portIndex,
                 });
                 onSuccess();
                 onClose();

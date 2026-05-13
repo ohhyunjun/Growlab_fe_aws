@@ -114,7 +114,8 @@ function MonitoringPage() {
     );
 
     const selectedPlant = device.plants?.find(p => p.portIndex === selectedPort) ?? null;
-    const emoji = selectedPlant ? (SPECIES_EMOJI[selectedPlant.species] || "🌱") : "🌱";
+    const representativePlant = device.plants?.find(p => p.species) ?? null;
+    const emoji = representativePlant? (SPECIES_EMOJI[representativePlant.species] || "🌱") : "🌱";
 
     const temp = device.temperature;
     const humidity = device.humidity;
@@ -154,7 +155,7 @@ function MonitoringPage() {
                                 {emoji}
                             </div>
                             <div>
-                                <div className="font-bold text-gray-800 text-sm">{selectedPlant?.name || "미등록"}</div>
+                                <div className="font-bold text-gray-800 text-sm">{representativePlant?.species || "미등록"}</div>
                                 <div className="text-xs text-gray-400">{serialNumber} · 포트 {selectedPort + 1}</div>
                             </div>
                         </div>
