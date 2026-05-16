@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { getUnreadCountApi } from "../../api/noticeApi";
-import { getUserDevicesApi, deleteDeviceApi } from "../../api/deviceApi";
+import { getUserDevicesApi, deleteDeviceApi, updatePortStatusApi } from "../../api/deviceApi";
 import { deletePlantApi } from "../../api/plantApi";
 import AddDeviceModal from "../../components/device/AddDeviceModal";
 import SelectPlantModal from "../../components/device/SelectPlantModal";
@@ -48,7 +48,7 @@ function DeviceCard({ device, onDelete, onPlantRegister, onPlantDelete, onPortTo
         : "🌱";
 
     // 기기의 대표 식물 정보 (이제 기기당 하나)
-    const mainPlant = device.plant; 
+    const mainPlant = device.plants?.[0];
 
     return (
         <div
@@ -92,8 +92,7 @@ function DeviceCard({ device, onDelete, onPlantRegister, onPlantDelete, onPortTo
             {/* 8개 포트 활성화/비활성화 그리드 */}
             <div className="grid grid-cols-4 gap-2 p-2 bg-gray-50 rounded-lg border border-gray-100 mb-4">
                 {[...Array(8)].map((_, index) => {
-                    // device.activePorts 같은 배열이 있다고 가정하거나 status 필드 활용
-                    const isActive = device.activePorts?.includes(index);
+                    const isActive = device.portStatus?.[index] === "1";
 
                     return (
                         <div
@@ -165,9 +164,12 @@ function HomePage() {
     const fetchDevices = async () => {
         try {
             const res = await getUserDevicesApi();
+
             setDevices(res.data);
-        } catch (err) { console.error(err); }
-    };
+        } catch (err) {
+            console.error(err);
+        }
+};
 
     const getSortedDevices = () => {
         const copy = [...devices];
@@ -206,16 +208,21 @@ function HomePage() {
     };
 
     // 포트 활성화/비활성화 토글 핸들러
-    const handlePortToggle = async (serialNumber, portIndex, nextStatus) => {
-        try {
-            // 예: await togglePortApi(serialNumber, portIndex, nextStatus);
-            // 실제 API에 맞춰 수정 필요
-            console.log(`${serialNumber}의 ${portIndex}번 포트를 ${nextStatus ? "활성화" : "비활성화"}`);
-            await fetchDevices(); // 상태 갱신
-        } catch (err) {
-            console.error("포트 상태 변경 실패:", err);
-            alert("포트 제어에 실패했습니다."); }
-    };
+ const handlePortToggle = async (serialNumber, portIndex, nextStatus) => {
+    try {
+        await updatePortStatusApi(
+            serialNumber,
+            portIndex,
+            nextStatus
+        );
+
+        await fetchDevices();
+
+    } catch (err) {
+        console.error("포트 상태 변경 실패:", err);
+        alert("포트 제어에 실패했습니다.");
+    }
+};
 
     const handlePlantRegister = (serialNumber, portIndex) => {
         setPlantRegisterSerial(serialNumber);
