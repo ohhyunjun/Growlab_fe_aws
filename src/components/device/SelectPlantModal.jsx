@@ -74,8 +74,13 @@
                 setError("식물 이름을 입력해주세요.");
                 return;
             }
+
+            console.log("serialNumber:", serialNumber);
+            console.log("portIndex:", portIndex);
+
             setLoading(true);
             setError("");
+
             try {
                 await createPlantApi({
                     name: plantName.trim(),
@@ -86,10 +91,16 @@
                     speciesId: selected.id,
                     serialNumber: serialNumber,
                 });
+
                 onSuccess();
                 onClose();
+
             } catch (err) {
-                setError(err.response?.data?.message || err.response?.data || "식물 등록에 실패했습니다.");
+                setError(
+                    err.response?.data?.message || 
+                    err.response?.data || 
+                    "식물 등록에 실패했습니다."
+                );
             } finally {
                 setLoading(false);
             }
