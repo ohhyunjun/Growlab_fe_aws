@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { getUserDevicesApi } from "../../api/deviceApi";
 import { getAllNoticesApi } from "../../api/noticeApi";
@@ -16,6 +16,7 @@ const STAGE_LABEL = { SEED: "씨앗", GERMINATION: "발아", MATURE: "성숙" };
 function MonitoringPage() {
     const { serialNumber } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
     const [device, setDevice] = useState(null);
     const [notices, setNotices] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -57,24 +58,44 @@ function MonitoringPage() {
     };
 
     const growthData = growthDataMap[selectedPort] || [];
-
     const visibleData = growthData.slice(-range);
 
     useEffect(() => {
-        const fetch = async () => {
+        const fetchData = async () => {
             try {
                 const res = await getUserDevicesApi();
                 const found = res.data.find(d => d.serialNumber === serialNumber);
                 setDevice(found);
-                if (found?.plants?.length > 0) {
-                    setSelectedPort(found.plants[0].portIndex);
+
+                if (found) {
+                    const targetPort = location.state?.portIndex;
+                    if (targetPort !== null && targetPort !== undefined) {
+                        // ✅ 홈에서 넘어온 포트가 있으면 우선 사용
+                        setSelectedPort(targetPort);
+                    } else if (found.plants?.length > 0) {
+                        // ✅ portStatus 기준으로 ON 상태인 포트 중 식물이 있는 첫 번째 포트 선택
+                        const portStatus = found.portStatus || "00000000";
+                        const onPortWithPlant = found.plants.find(
+                            p => portStatus[p.portIndex] === "1"
+                        );
+                        if (onPortWithPlant) {
+                            setSelectedPort(onPortWithPlant.portIndex);
+                        } else {
+                            // ON 포트에 식물이 없으면 식물이 있는 첫 번째 포트
+                            const firstPlant = found.plants.reduce((a, b) =>
+                                a.portIndex < b.portIndex ? a : b
+                            );
+                            setSelectedPort(firstPlant.portIndex);
+                        }
+                    }
                 }
+
                 const noticeRes = await getAllNoticesApi();
                 setNotices(noticeRes.data);
             } catch (e) { console.error(e); }
             finally { setLoading(false); }
         };
-        fetch();
+        fetchData();
     }, [serialNumber]);
 
     const handleSaveSettings = () => {
@@ -113,9 +134,12 @@ function MonitoringPage() {
         </div>
     );
 
+    // ✅ portStatus 문자열 ("00000000" 등) 에서 각 포트 ON 여부 파악
+    const portStatus = device.portStatus || "00000000";
+
     const selectedPlant = device.plants?.find(p => p.portIndex === selectedPort) ?? null;
     const representativePlant = device.plants?.find(p => p.species) ?? null;
-    const emoji = representativePlant? (SPECIES_EMOJI[representativePlant.species] || "🌱") : "🌱";
+    const emoji = representativePlant ? (SPECIES_EMOJI[representativePlant.species] || "🌱") : "🌱";
 
     const temp = device.temperature;
     const humidity = device.humidity;
@@ -301,21 +325,27 @@ function MonitoringPage() {
                             </div>
                         </div>
 
-                        {/* 포트 선택 버튼 */}
+                        {/* ✅ 포트 선택 버튼 — portStatus 기준으로 ON/OFF 표시 */}
                         <div className="flex gap-1 mb-3 flex-wrap">
                             {PORT_OPTIONS.map(port => {
                                 const portPlant = device.plants?.find(p => p.portIndex === port);
+                                const isPortOn = portStatus[port] === "1"; // ✅ portStatus 체크
+
                                 return (
                                     <button key={port} onClick={() => setSelectedPort(port)}
                                         className={`text-xs px-2.5 py-1 rounded-lg transition-colors border ${
                                             selectedPort === port
                                                 ? "bg-green-600 text-white border-green-600"
-                                                : portPlant
+                                                : isPortOn && portPlant
                                                     ? "bg-green-50 text-green-600 border-green-200 hover:bg-green-100"
                                                     : "bg-gray-50 text-gray-300 border-gray-100"
                                         }`}
                                     >
-                                        {portPlant ? `${port + 1} ${SPECIES_EMOJI[portPlant.species] || "🌱"}` : `${port + 1}`}
+                                        {/* ✅ ON 상태이고 식물이 있을 때만 이모지 표시 */}
+                                        {isPortOn && portPlant
+                                            ? `${port + 1} ${SPECIES_EMOJI[portPlant.species] || "🌱"}`
+                                            : `${port + 1}`
+                                        }
                                     </button>
                                 );
                             })}
@@ -323,6 +353,10 @@ function MonitoringPage() {
 
                         <div className="text-xs text-gray-400 mb-2">
                             포트 {selectedPort + 1} · {selectedPlant ? selectedPlant.name : "식물 미등록"}
+                            {/* ✅ 현재 선택 포트의 ON/OFF 상태도 표시 */}
+                            <span className={`ml-2 font-medium ${portStatus[selectedPort] === "1" ? "text-green-500" : "text-gray-300"}`}>
+                                {portStatus[selectedPort] === "1" ? "● ON" : "○ OFF"}
+                            </span>
                         </div>
 
                         {selectedPlant ? (
