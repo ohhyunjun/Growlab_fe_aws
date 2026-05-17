@@ -38,6 +38,7 @@ function MonitoringPage() {
 
     const [autoCapture, setAutoCapture] = useState(saved?.autoCapture ?? false);
     const [isLedOn, setIsLedOn] = useState(saved?.isLedOn ?? true);
+    const [isLedAuto, setIsLedAuto] = useState(saved?.isLedAuto ?? false);
     const [rotationAngle, setRotationAngle] = useState(saved?.rotationAngle ?? 0);
     const [cameraHeight, setCameraHeight] = useState(saved?.cameraHeight ?? 50);
     const [ledStart, setLedStart] = useState(saved?.ledStart ?? "06:00");
@@ -96,7 +97,7 @@ function MonitoringPage() {
 
     const handleSaveSettings = () => {
         localStorage.setItem(storageKey, JSON.stringify({
-            autoCapture, isLedOn, rotationAngle, cameraHeight,
+            autoCapture, isLedOn, isLedAuto, rotationAngle, cameraHeight,
             ledStart, ledEnd, captureStart, captureInterval
         }));
         setSaveMessage("✓ 저장되었습니다");
@@ -108,6 +109,7 @@ function MonitoringPage() {
         localStorage.removeItem(storageKey);
         setAutoCapture(false);
         setIsLedOn(true);
+        setIsLedAuto(false);
         setRotationAngle(0);
         setCameraHeight(50);
         setLedStart("06:00");
@@ -163,7 +165,6 @@ function MonitoringPage() {
                 </span>
             </div>
 
-            {/* ✅ 3단 그리드 — 각 컬럼이 독립적으로 높이를 가지도록 items-start */}
             <div className="p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 max-w-screen-xl mx-auto lg:items-start">
 
                 {/* ───── 좌측 사이드바 ───── */}
@@ -233,8 +234,7 @@ function MonitoringPage() {
                             )}
                         </div>
 
-                        {/* 최소 높이 고정 — 알림 있든 없든 카드 크기 일정하게 유지 */}
-                        <div className="min-h-[300px] flex flex-col">
+                        <div className="min-h-[230px] flex flex-col">
                             {notices.length === 0 ? (
                                 <div className="flex-1 flex flex-col items-center justify-center gap-2 text-gray-300">
                                     <span className="text-2xl">🔕</span>
@@ -242,8 +242,7 @@ function MonitoringPage() {
                                 </div>
                             ) : (
                                 <>
-                                    {/* max-h 로 너무 길어지지 않게, 10개씩 표시 */}
-                                    <div className="flex flex-col gap-3 text-xs text-gray-500 overflow-y-auto max-h-120 pr-1">
+                                    <div className="flex flex-col gap-3 text-xs text-gray-500 overflow-y-auto max-h-[250px] pr-1">
                                         {notices.slice(0, noticeVisibleCount).map(notice => (
                                             <div key={notice.id}
                                                 className={`border-l-2 pl-2 py-0.5 ${notice.isRead ? "border-gray-200" : "border-green-400"}`}>
@@ -253,8 +252,6 @@ function MonitoringPage() {
                                             </div>
                                         ))}
                                     </div>
-
-                                    {/* 더보기 버튼 — 표시 중인 것보다 알림이 더 있을 때만 */}
                                     {noticeVisibleCount < notices.length && (
                                         <button
                                             onClick={() => setNoticeVisibleCount(prev => prev + 10)}
@@ -263,8 +260,6 @@ function MonitoringPage() {
                                             더보기 ({notices.length - noticeVisibleCount}개 남음)
                                         </button>
                                     )}
-
-                                    {/* 접기 버튼 — 10개 초과로 펼쳐져 있을 때 */}
                                     {noticeVisibleCount > 10 && (
                                         <button
                                             onClick={() => setNoticeVisibleCount(10)}
@@ -422,57 +417,72 @@ function MonitoringPage() {
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                         <h2 className="text-sm font-semibold text-gray-700 mb-4">⚙️ 시스템 제어</h2>
 
-                        {/* LED */}
+                        {/* ✅ LED 섹션 — 수동/자동 토글 */}
                         <div className="mb-4 pb-4 border-b border-gray-50">
-                            <div className="flex items-center justify-between mb-2">
+                            {/* 헤더: 아이콘 + 라벨 + 수동/자동 토글 */}
+                            <div className="flex items-center justify-between mb-3">
                                 <span className="text-xs font-medium text-gray-600">💡 LED 조명</span>
-                                <div onClick={() => setIsLedOn(prev => !prev)}
-                                    className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${isLedOn ? "bg-green-500" : "bg-gray-200"}`}>
-                                    <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow ${isLedOn ? "left-5" : "left-0.5"}`} />
+                                <div className="flex items-center gap-2">
+                                    <span className={`text-[10px] font-medium ${!isLedAuto ? "text-gray-700" : "text-gray-300"}`}>수동</span>
+                                    <div
+                                        onClick={() => setIsLedAuto(prev => !prev)}
+                                        className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${isLedAuto ? "bg-green-500" : "bg-gray-300"}`}
+                                    >
+                                        <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow ${isLedAuto ? "left-5" : "left-0.5"}`} />
+                                    </div>
+                                    <span className={`text-[10px] font-medium ${isLedAuto ? "text-green-600" : "text-gray-300"}`}>자동</span>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label className="text-xs text-gray-400">시작 시간</label>
-                                    <input type="time" value={ledStart} onChange={e => setLedStart(e.target.value)}
-                                        className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1" />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-gray-400">종료 시간</label>
-                                    <input type="time" value={ledEnd} onChange={e => setLedEnd(e.target.value)}
-                                        className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1" />
-                                </div>
-                            </div>
-                        </div>
 
-                        {/* 타워 회전 */}
-                        <div className="mb-4 pb-4 border-b border-gray-50">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-medium text-gray-600">🔄 타워 회전 (스텝모터)</span>
-                            </div>
-                            <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs text-gray-400">회전 각도</span>
-                                <span className="text-xs font-bold text-green-600">{rotationAngle}°</span>
-                            </div>
-                            <input type="range" min="0" max="360" value={rotationAngle}
-                                onChange={e => setRotationAngle(Number(e.target.value))}
-                                className="w-full accent-green-500" />
-                            <button className="w-full mt-2 border border-gray-200 text-xs py-1.5 rounded-lg hover:bg-gray-50 transition-colors">즉시 회전</button>
-                        </div>
+                            {/* ✅ 수동 모드: ON/OFF 버튼 두 개 */}
+                            {!isLedAuto && (
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        onClick={() => setIsLedOn(true)}
+                                        className={`py-2 rounded-lg text-xs font-semibold border transition-colors ${
+                                            isLedOn
+                                                ? "bg-yellow-400 border-yellow-400 text-white"
+                                                : "bg-gray-50 border-gray-200 text-gray-400 hover:border-yellow-300 hover:text-yellow-500"
+                                        }`}
+                                    >
+                                        ☀️ ON
+                                    </button>
+                                    <button
+                                        onClick={() => setIsLedOn(false)}
+                                        className={`py-2 rounded-lg text-xs font-semibold border transition-colors ${
+                                            !isLedOn
+                                                ? "bg-gray-400 border-gray-400 text-white"
+                                                : "bg-gray-50 border-gray-200 text-gray-400 hover:border-gray-400 hover:text-gray-600"
+                                        }`}
+                                    >
+                                        🌙 OFF
+                                    </button>
+                                </div>
+                            )}
 
-                        {/* 카메라 Z축 */}
-                        <div className="mb-4 pb-4 border-b border-gray-50">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-medium text-gray-600">📷 ESP32-CAM Z축</span>
-                            </div>
-                            <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs text-gray-400">카메라 높이</span>
-                                <span className="text-xs font-bold text-green-600">{cameraHeight}cm</span>
-                            </div>
-                            <input type="range" min="0" max="100" value={cameraHeight}
-                                onChange={e => setCameraHeight(Number(e.target.value))}
-                                className="w-full accent-green-500" />
-                            <button className="w-full mt-2 border border-gray-200 text-xs py-1.5 rounded-lg hover:bg-gray-50 transition-colors">즉시 이동</button>
+                            {/* ✅ 자동 모드: 시작/종료 시간 입력 */}
+                            {isLedAuto && (
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="text-xs text-gray-400">시작 시간</label>
+                                        <input
+                                            type="time"
+                                            value={ledStart}
+                                            onChange={e => setLedStart(e.target.value)}
+                                            className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-gray-400">종료 시간</label>
+                                        <input
+                                            type="time"
+                                            value={ledEnd}
+                                            onChange={e => setLedEnd(e.target.value)}
+                                            className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1"
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* 자동 촬영 */}
