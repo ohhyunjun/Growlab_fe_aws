@@ -71,7 +71,6 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
                     <div className="text-xs text-gray-400">{device.serialNumber}</div>
 
                     {speciesName ? (
-                        // ✅ 품종 등록됨 → "청상추" 만 표시 (P1 없이)
                         <div className="flex items-center gap-1 mt-0.5">
                             <span className="text-xs text-gray-600 font-medium">
                                 {speciesEmoji} {speciesName}
@@ -79,6 +78,12 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
+                                    // ✅ ON 상태인 포트가 하나라도 있으면 변경 차단
+                                    const hasActivePort = portStatus.includes("1");
+                                    if (hasActivePort) {
+                                        alert("포트가 켜져 있는 동안은 품종을 변경할 수 없어요.\n모든 포트를 OFF한 후 변경해주세요.");
+                                        return;
+                                    }
                                     onSelectSpecies(device.serialNumber);
                                 }}
                                 className="text-[10px] text-blue-400 hover:text-blue-600 ml-1 underline"
