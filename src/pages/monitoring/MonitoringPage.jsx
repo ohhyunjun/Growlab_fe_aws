@@ -45,6 +45,7 @@ function MonitoringPage() {
     const [captureStart, setCaptureStart] = useState(saved?.captureStart ?? "09:00");
     const [captureInterval, setCaptureInterval] = useState(saved?.captureInterval ?? "3시간");
     const [saveMessage, setSaveMessage] = useState("");
+    const [noticeVisibleCount, setNoticeVisibleCount] = useState(10);
 
     const growthDataMap = {
         0: [3,4,5,6,7,8,9,10,11,12,13,14],
@@ -162,8 +163,8 @@ function MonitoringPage() {
                 </span>
             </div>
 
-            {/* ✅ 반응형 그리드: 모바일 1열 → lg 3단 */}
-            <div className="p-4 sm:p-5 flex flex-col lg:grid lg:grid-cols-12 gap-4 max-w-screen-xl mx-auto">
+            {/* ✅ 3단 그리드 — 각 컬럼이 독립적으로 높이를 가지도록 items-start */}
+            <div className="p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 max-w-screen-xl mx-auto lg:items-start">
 
                 {/* ───── 좌측 사이드바 ───── */}
                 <div className="lg:col-span-3 flex flex-col gap-3">
@@ -197,20 +198,20 @@ function MonitoringPage() {
                         )}
                     </div>
 
-                    {/* Vision AI — 모바일에서는 가로 2열 */}
+                    {/* Vision AI */}
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                         <div className="flex items-center gap-2 mb-3">
                             <span className="text-sm">🔍</span>
                             <h2 className="text-sm font-semibold text-gray-700">Vision AI 분석</h2>
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-1 gap-2 text-xs">
+                        <div className="grid grid-cols-2 lg:grid-cols-1 gap-2 text-xs">
                             {[
                                 { label: "생육 상태", value: "✓ 정상", color: "text-green-500" },
                                 { label: "병충해", value: "✓ 이상없음", color: "text-green-500" },
                                 { label: "성장 속도", value: "+12% 빠름", color: "text-blue-500" },
                                 { label: "종합 평가", value: "85점 / 우수", color: "text-green-500" },
                             ].map(({ label, value, color }) => (
-                                <div key={label} className="flex justify-between items-center">
+                                <div key={label} className="flex justify-between items-center py-1">
                                     <span className="text-gray-400">{label}</span>
                                     <span className={`font-medium ${color}`}>{value}</span>
                                 </div>
@@ -218,24 +219,61 @@ function MonitoringPage() {
                         </div>
                     </div>
 
-                    {/* 최근 알림 — 모바일에서 높이 제한 완화 */}
-                    <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm flex flex-col">
-                        <div className="flex items-center gap-2 mb-3">
-                            <span className="text-sm">🔔</span>
-                            <h2 className="text-sm font-semibold text-gray-700">최근 알림</h2>
+                    {/* 최근 알림 */}
+                    <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm">🔔</span>
+                                <h2 className="text-sm font-semibold text-gray-700">최근 알림</h2>
+                            </div>
+                            {notices.length > 0 && (
+                                <span className="text-[10px] bg-green-100 text-green-600 font-semibold px-2 py-0.5 rounded-full">
+                                    {notices.length}
+                                </span>
+                            )}
                         </div>
-                        <div className="flex flex-col gap-3 text-xs text-gray-500 overflow-y-auto max-h-48 lg:max-h-none" style={{ height: undefined }}>
+
+                        {/* 최소 높이 고정 — 알림 있든 없든 카드 크기 일정하게 유지 */}
+                        <div className="min-h-[300px] flex flex-col">
                             {notices.length === 0 ? (
-                                <div className="flex items-center justify-center py-6 text-gray-300">알림이 없어요</div>
+                                <div className="flex-1 flex flex-col items-center justify-center gap-2 text-gray-300">
+                                    <span className="text-2xl">🔕</span>
+                                    <p className="text-xs">새로운 알림이 없어요</p>
+                                </div>
                             ) : (
-                                notices.map(notice => (
-                                    <div key={notice.id}
-                                        className={`border-l-2 pl-2 ${notice.isRead ? "border-gray-200" : "border-green-400"}`}>
-                                        <p className="font-medium text-gray-700">{notice.noticeType}</p>
-                                        <p className="mt-0.5">{notice.message}</p>
-                                        <p className="text-gray-300 mt-0.5">{notice.deviceSerial}</p>
+                                <>
+                                    {/* max-h 로 너무 길어지지 않게, 10개씩 표시 */}
+                                    <div className="flex flex-col gap-3 text-xs text-gray-500 overflow-y-auto max-h-120 pr-1">
+                                        {notices.slice(0, noticeVisibleCount).map(notice => (
+                                            <div key={notice.id}
+                                                className={`border-l-2 pl-2 py-0.5 ${notice.isRead ? "border-gray-200" : "border-green-400"}`}>
+                                                <p className="font-medium text-gray-700">{notice.noticeType}</p>
+                                                <p className="mt-0.5 leading-relaxed">{notice.message}</p>
+                                                <p className="text-gray-300 mt-0.5">{notice.deviceSerial}</p>
+                                            </div>
+                                        ))}
                                     </div>
-                                ))
+
+                                    {/* 더보기 버튼 — 표시 중인 것보다 알림이 더 있을 때만 */}
+                                    {noticeVisibleCount < notices.length && (
+                                        <button
+                                            onClick={() => setNoticeVisibleCount(prev => prev + 10)}
+                                            className="mt-3 w-full text-xs text-gray-400 hover:text-green-600 py-1.5 border border-dashed border-gray-200 hover:border-green-300 rounded-lg transition-colors"
+                                        >
+                                            더보기 ({notices.length - noticeVisibleCount}개 남음)
+                                        </button>
+                                    )}
+
+                                    {/* 접기 버튼 — 10개 초과로 펼쳐져 있을 때 */}
+                                    {noticeVisibleCount > 10 && (
+                                        <button
+                                            onClick={() => setNoticeVisibleCount(10)}
+                                            className="mt-1 w-full text-xs text-gray-300 hover:text-gray-500 py-1 transition-colors"
+                                        >
+                                            접기
+                                        </button>
+                                    )}
+                                </>
                             )}
                         </div>
                     </div>
@@ -486,7 +524,7 @@ function MonitoringPage() {
                     </div>
 
                     {/* AI 조언 */}
-                    <div className="bg-green-50 rounded-2xl border border-green-100 p-4 overflow-y-auto max-h-48 lg:max-h-none" style={{ height: undefined }}>
+                    <div className="bg-green-50 rounded-2xl border border-green-100 p-4">
                         <div className="flex items-center gap-2 mb-3">
                             <span className="text-sm">🤖</span>
                             <h2 className="text-sm font-semibold text-green-700">AI 재배 조언</h2>
