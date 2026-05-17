@@ -3,18 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { getPlantsApi, getDiariesApi, createDiaryApi, updateDiaryApi, deleteDiaryApi } from "../../api/diaryApi";
 
 const SPECIES_EMOJI = {
-    "방울토마토": "🍅",
-    "청상추": "🥬",
-    "적상추": "🥬",
-    "바질": "🌿",
-    "딸기": "🍓",
-    "파프리카": "🌶️",
-    "브로콜리": "🥦",
-    "고추": "🌶️",
-    "블루베리": "🫐",
-    "페퍼민트": "🌿",
-    "청경채": "🥬",
-    "테이블야자": "🌴",
+    "방울토마토": "🍅", "청상추": "🥬", "적상추": "🥬",
+    "바질": "🌿", "딸기": "🍓", "파프리카": "🌶️",
+    "브로콜리": "🥦", "고추": "🌶️", "블루베리": "🫐",
+    "페퍼민트": "🌿", "청경채": "🥬", "테이블야자": "🌴",
     "산세베리아 스투키": "🪴",
 };
 
@@ -27,9 +19,10 @@ function DiaryPage() {
     const [showForm, setShowForm] = useState(false);
     const [editingDiary, setEditingDiary] = useState(null);
     const [selectedDiary, setSelectedDiary] = useState(null);
+    const [showList, setShowList] = useState(true); // ✅ 모바일에서 목록/상세 토글
     const [form, setForm] = useState({ title: "", content: "", targetDate: "" });
-    const [imageFiles, setImageFiles] = useState([]);       // ✅ 배열로 변경
-    const [imagePreviews, setImagePreviews] = useState([]); // ✅ 배열로 변경
+    const [imageFiles, setImageFiles] = useState([]);
+    const [imagePreviews, setImagePreviews] = useState([]);
     const [error, setError] = useState("");
 
     useEffect(() => {
@@ -84,12 +77,9 @@ function DiaryPage() {
         setError("");
         try {
             const formData = new FormData();
-            const diaryData = {
-                ...form,
-                targetDate: `${form.targetDate} 00:00:00`,
-            };
+            const diaryData = { ...form, targetDate: `${form.targetDate} 00:00:00` };
             formData.append("diaryData", new Blob([JSON.stringify(diaryData)], { type: "application/json" }));
-            imageFiles.forEach(file => formData.append("files", file)); // ✅ 배열 전체 append
+            imageFiles.forEach(file => formData.append("files", file));
 
             if (editingDiary) {
                 await updateDiaryApi(selectedPlant.id, editingDiary.id, formData);
@@ -114,9 +104,10 @@ function DiaryPage() {
             targetDate: diary.targetDate?.slice(0, 10) || "",
         });
         setImageFiles([]);
-        setImagePreviews(diary.imageUrls?.map(url => `http://localhost:8080${url}`) || []); // ✅ 기존 이미지 미리보기
+        setImagePreviews(diary.imageUrls?.map(url => `http://localhost:8080${url}`) || []);
         setSelectedDiary(null);
         setShowForm(true);
+        setShowList(false); // ✅ 모바일: 폼으로 전환
     };
 
     const handleDelete = async (diaryId) => {
@@ -124,6 +115,7 @@ function DiaryPage() {
         try {
             await deleteDiaryApi(selectedPlant.id, diaryId);
             setSelectedDiary(null);
+            setShowList(true);
             fetchDiaries(selectedPlant.id);
         } catch (err) { console.error(err); }
     };
@@ -134,6 +126,17 @@ function DiaryPage() {
         clearImages();
         setSelectedDiary(null);
         setShowForm(true);
+        setShowList(false); // ✅ 모바일: 폼으로 전환
+    };
+
+    const handleDiarySelect = (diary) => {
+        if (selectedDiary?.id === diary.id) {
+            setSelectedDiary(null);
+        } else {
+            setSelectedDiary(diary);
+            setShowForm(false);
+            setShowList(false); // ✅ 모바일: 상세로 전환
+        }
     };
 
     return (
@@ -162,6 +165,7 @@ function DiaryPage() {
                                 setSelectedPlant(plant);
                                 setSelectedDiary(null);
                                 setShowForm(false);
+                                setShowList(true);
                             }}
                             className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors
                                 ${selectedPlant?.id === plant.id ? "bg-green-600 text-white" : "bg-white border border-gray-200 text-gray-600 hover:border-green-400"}`}
@@ -179,9 +183,12 @@ function DiaryPage() {
 
             {/* 메인 영역 */}
             {selectedPlant && (
-                <div className="flex gap-4">
+                <div className="flex flex-col sm:flex-row gap-4">
+
+                    {/* ✅ 모바일: 목록과 상세를 토글 / sm 이상: 항상 둘 다 표시 */}
+
                     {/* 다이어리 목록 */}
-                    <div className="w-64 flex-shrink-0 bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className={`${showList || (!selectedDiary && !showForm) ? "block" : "hidden"} sm:block w-full sm:w-64 flex-shrink-0 bg-white rounded-xl border border-gray-200 overflow-hidden`}>
                         <div className="p-4 border-b border-gray-100">
                             <p className="text-sm font-semibold text-gray-700">
                                 {SPECIES_EMOJI[selectedPlant.speciesName] || "🌱"} {selectedPlant.name} 일지
@@ -197,14 +204,7 @@ function DiaryPage() {
                                 {diaries.map(diary => (
                                     <button
                                         key={diary.id}
-                                        onClick={() => {
-                                            if (selectedDiary?.id === diary.id) {
-                                                setSelectedDiary(null);
-                                            } else {
-                                                setSelectedDiary(diary);
-                                                setShowForm(false);
-                                            }
-                                        }}
+                                        onClick={() => handleDiarySelect(diary)}
                                         className={`text-left px-4 py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors
                                             ${selectedDiary?.id === diary.id ? "bg-green-50 border-l-2 border-l-green-500" : ""}`}
                                     >
@@ -217,9 +217,16 @@ function DiaryPage() {
                     </div>
 
                     {/* 상세 / 작성 폼 */}
-                    <div className="flex-grow bg-white rounded-xl border border-gray-200 p-6">
+                    <div className={`${!showList || selectedDiary || showForm ? "block" : "hidden"} sm:block flex-grow bg-white rounded-xl border border-gray-200 p-5 sm:p-6`}>
                         {showForm ? (
                             <div className="flex flex-col gap-4">
+                                {/* ✅ 모바일: 뒤로가기 버튼 */}
+                                <div className="flex items-center gap-2 sm:hidden">
+                                    <button
+                                        onClick={() => { setShowForm(false); setShowList(true); }}
+                                        className="text-gray-400 hover:text-gray-600 text-sm"
+                                    >← 목록</button>
+                                </div>
                                 <h2 className="text-base font-bold text-gray-800">{editingDiary ? "일지 수정" : "새 일지 작성"}</h2>
                                 {error && <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2">{error}</div>}
                                 <div>
@@ -252,89 +259,68 @@ function DiaryPage() {
                                     />
                                 </div>
 
-                                {/* 사진 첨부 - 다중 이미지 */}
+                                {/* 사진 첨부 */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
                                         사진 첨부 {imagePreviews.length > 0 && <span className="text-gray-400 font-normal">({imagePreviews.length}장)</span>}
                                     </label>
-
-                                    {/* 이미지 미리보기 그리드 */}
                                     {imagePreviews.length > 0 && (
                                         <div className="grid grid-cols-3 gap-2 mb-2">
                                             {imagePreviews.map((src, idx) => (
                                                 <div key={idx} className="relative aspect-square">
-                                                    <img
-                                                        src={src}
-                                                        alt={`미리보기 ${idx + 1}`}
-                                                        className="w-full h-full object-cover rounded-lg border border-gray-200"
-                                                    />
-                                                    <button
-                                                        onClick={() => removeImage(idx)}
-                                                        className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs hover:bg-red-600"
-                                                    >✕</button>
+                                                    <img src={src} alt={`미리보기 ${idx + 1}`}
+                                                        className="w-full h-full object-cover rounded-lg border border-gray-200" />
+                                                    <button onClick={() => removeImage(idx)}
+                                                        className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs hover:bg-red-600">✕</button>
                                                 </div>
                                             ))}
                                         </div>
                                     )}
-
-                                    {/* 추가 버튼 */}
                                     <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-gray-200 rounded-lg cursor-pointer hover:border-green-400 hover:bg-green-50 transition-colors">
                                         <span className="text-xl mb-0.5">📷</span>
                                         <span className="text-xs text-gray-400">클릭하여 사진 추가 (여러 장 가능)</span>
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            multiple
-                                            onChange={handleImageChange}
-                                            className="hidden"
-                                        />
+                                        <input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" />
                                     </label>
                                 </div>
 
                                 <div className="flex gap-2">
+                                    <button onClick={handleSubmit}
+                                        className="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors">
+                                        {editingDiary ? "수정 완료" : "저장"}
+                                    </button>
                                     <button
-                                        onClick={handleSubmit}
-                                        className="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors"
-                                    >{editingDiary ? "수정 완료" : "저장"}</button>
-                                    <button
-                                        onClick={() => {
-                                            setShowForm(false);
-                                            setEditingDiary(null);
-                                            clearImages();
-                                        }}
-                                        className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-500 hover:bg-gray-50"
-                                    >취소</button>
+                                        onClick={() => { setShowForm(false); setEditingDiary(null); clearImages(); setShowList(true); }}
+                                        className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-500 hover:bg-gray-50">
+                                        취소
+                                    </button>
                                 </div>
                             </div>
                         ) : selectedDiary ? (
                             <div className="flex flex-col gap-4">
+                                {/* ✅ 모바일: 뒤로가기 버튼 */}
+                                <button
+                                    onClick={() => { setSelectedDiary(null); setShowList(true); }}
+                                    className="flex items-center gap-1 text-gray-400 hover:text-gray-600 text-sm sm:hidden w-fit"
+                                >← 목록</button>
+
                                 <div className="flex justify-between items-start">
                                     <div>
                                         <p className="text-xs text-gray-400 mb-1">{selectedDiary.targetDate?.slice(0, 10)}</p>
                                         <h2 className="text-lg font-bold text-gray-800">{selectedDiary.title}</h2>
                                     </div>
                                     <div className="flex gap-2">
-                                        <button
-                                            onClick={() => handleEdit(selectedDiary)}
-                                            className="text-xs text-green-600 hover:text-green-700 font-medium px-3 py-1.5 border border-green-200 rounded-lg hover:bg-green-50"
-                                        >수정</button>
-                                        <button
-                                            onClick={() => handleDelete(selectedDiary.id)}
-                                            className="text-xs text-red-400 hover:text-red-500 px-3 py-1.5 border border-red-100 rounded-lg hover:bg-red-50"
-                                        >삭제</button>
+                                        <button onClick={() => handleEdit(selectedDiary)}
+                                            className="text-xs text-green-600 hover:text-green-700 font-medium px-3 py-1.5 border border-green-200 rounded-lg hover:bg-green-50">수정</button>
+                                        <button onClick={() => handleDelete(selectedDiary.id)}
+                                            className="text-xs text-red-400 hover:text-red-500 px-3 py-1.5 border border-red-100 rounded-lg hover:bg-red-50">삭제</button>
                                     </div>
                                 </div>
                                 <hr className="border-gray-100" />
-                                {/* ✅ 다중 이미지 그리드 표시 */}
                                 {selectedDiary.imageUrls?.length > 0 && (
-                                    <div className="grid grid-cols-3 gap-2">
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                         {selectedDiary.imageUrls.map((url, idx) => (
-                                            <img
-                                                key={idx}
-                                                src={`http://localhost:8080${url}`}
-                                                alt={`일지 사진 ${idx + 1}`}
-                                                className="w-full aspect-square object-cover rounded-lg border border-gray-100"
-                                            />
+                                            <img key={idx} src={`http://localhost:8080${url}`} alt={`일지 사진 ${idx + 1}`}
+                                                className="w-full aspect-square object-cover rounded-lg border border-gray-100" />
                                         ))}
                                     </div>
                                 )}
