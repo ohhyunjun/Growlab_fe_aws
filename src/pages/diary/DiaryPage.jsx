@@ -10,16 +10,43 @@ const SPECIES_EMOJI = {
     "산세베리아 스투키": "🪴",
 };
 
+/**
+ * 포트별 식물 목록을 기기(serialNumber) 단위로 그룹핑
+ * 같은 기기의 식물 중 대표 1개(첫 번째)만 사용 → 탭 1개로 표시
+ */
+function groupPlantsByDevice(plants) {
+    const map = new Map(); // serialNumber → { representative plant, allPlantIds }
+    for (const plant of plants) {
+        const serial = plant.deviceSerial;
+        if (!map.has(serial)) {
+            map.set(serial, {
+                // 탭 표시에 쓸 대표 정보
+                representativeId: plant.id,
+                speciesName: plant.speciesName,
+                deviceSerial: plant.deviceSerial,
+                deviceNickname: plant.deviceNickname,
+                // 이 기기에 속한 모든 plantId (다이어리 조회 시 전부 사용)
+                plantIds: [plant.id],
+            });
+        } else {
+            map.get(serial).plantIds.push(plant.id);
+        }
+    }
+    return Array.from(map.values());
+}
+
 function DiaryPage() {
     const navigate = useNavigate();
-    const [plants, setPlants] = useState([]);
-    const [selectedPlant, setSelectedPlant] = useState(null);
+    // 기기 단위로 그룹핑된 탭 목록
+    const [deviceGroups, setDeviceGroups] = useState([]);
+    // 현재 선택된 기기 그룹
+    const [selectedGroup, setSelectedGroup] = useState(null);
     const [diaries, setDiaries] = useState([]);
     const [loading, setLoading] = useState(false);
     const [showForm, setShowForm] = useState(false);
     const [editingDiary, setEditingDiary] = useState(null);
     const [selectedDiary, setSelectedDiary] = useState(null);
-    const [showList, setShowList] = useState(true); // ✅ 모바일에서 목록/상세 토글
+    const [showList, setShowList] = useState(true);
     const [form, setForm] = useState({ title: "", content: "", targetDate: "" });
     const [imageFiles, setImageFiles] = useState([]);
     const [imagePreviews, setImagePreviews] = useState([]);
@@ -32,22 +59,33 @@ function DiaryPage() {
     }, []);
 
     useEffect(() => {
-        if (selectedPlant) fetchDiaries(selectedPlant.id);
-    }, [selectedPlant]);
+        if (selectedGroup) fetchDiaries(selectedGroup);
+    }, [selectedGroup]);
 
     const fetchPlants = async () => {
         try {
             const res = await getPlantsApi();
-            setPlants(res.data);
-            if (res.data.length > 0) setSelectedPlant(res.data[0]);
+            const groups = groupPlantsByDevice(res.data);
+            setDeviceGroups(groups);
+            if (groups.length > 0) setSelectedGroup(groups[0]);
         } catch (err) { console.error(err); }
     };
 
-    const fetchDiaries = async (plantId) => {
+    /**
+     * 기기에 속한 모든 plantId의 다이어리를 병렬로 가져와 합침
+     * (백엔드가 plantId 단위로 조회하는 구조 유지)
+     */
+    const fetchDiaries = async (group) => {
         setLoading(true);
         try {
-            const res = await getDiariesApi(plantId);
-            setDiaries(res.data);
+            const results = await Promise.all(
+                group.plantIds.map(id => getDiariesApi(id).then(r => r.data))
+            );
+            // 모든 포트의 다이어리를 날짜 최신순으로 정렬해서 합침
+            const merged = results
+                .flat()
+                .sort((a, b) => new Date(b.targetDate) - new Date(a.targetDate));
+            setDiaries(merged);
         } catch (err) { console.error(err); }
         finally { setLoading(false); }
     };
@@ -82,15 +120,17 @@ function DiaryPage() {
             imageFiles.forEach(file => formData.append("files", file));
 
             if (editingDiary) {
-                await updateDiaryApi(selectedPlant.id, editingDiary.id, formData);
+                // 수정 시엔 기존 일지의 plantId 사용
+                await updateDiaryApi(editingDiary.plantId, editingDiary.id, formData);
             } else {
-                await createDiaryApi(selectedPlant.id, formData);
+                // 새 일지는 기기의 대표 plantId(첫 번째)로 등록
+                await createDiaryApi(selectedGroup.representativeId, formData);
             }
             setShowForm(false);
             setEditingDiary(null);
             setForm({ title: "", content: "", targetDate: "" });
             clearImages();
-            fetchDiaries(selectedPlant.id);
+            fetchDiaries(selectedGroup);
         } catch (err) {
             setError("저장 중 오류가 발생했습니다.");
         }
@@ -107,16 +147,16 @@ function DiaryPage() {
         setImagePreviews(diary.imageUrls?.map(url => `http://localhost:8080${url}`) || []);
         setSelectedDiary(null);
         setShowForm(true);
-        setShowList(false); // ✅ 모바일: 폼으로 전환
+        setShowList(false);
     };
 
-    const handleDelete = async (diaryId) => {
+    const handleDelete = async (diary) => {
         if (!window.confirm("정말 삭제할까요?")) return;
         try {
-            await deleteDiaryApi(selectedPlant.id, diaryId);
+            await deleteDiaryApi(diary.plantId, diary.id);
             setSelectedDiary(null);
             setShowList(true);
-            fetchDiaries(selectedPlant.id);
+            fetchDiaries(selectedGroup);
         } catch (err) { console.error(err); }
     };
 
@@ -126,7 +166,7 @@ function DiaryPage() {
         clearImages();
         setSelectedDiary(null);
         setShowForm(true);
-        setShowList(false); // ✅ 모바일: 폼으로 전환
+        setShowList(false);
     };
 
     const handleDiarySelect = (diary) => {
@@ -135,7 +175,7 @@ function DiaryPage() {
         } else {
             setSelectedDiary(diary);
             setShowForm(false);
-            setShowList(false); // ✅ 모바일: 상세로 전환
+            setShowList(false);
         }
     };
 
@@ -147,7 +187,7 @@ function DiaryPage() {
                     <button onClick={() => navigate("/")} className="text-gray-400 hover:text-gray-600 text-sm">← 홈</button>
                     <h1 className="text-xl font-bold text-gray-800">📔 다이어리</h1>
                 </div>
-                {selectedPlant && (
+                {selectedGroup && (
                     <button
                         onClick={openForm}
                         className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
@@ -155,22 +195,36 @@ function DiaryPage() {
                 )}
             </div>
 
-            {/* 식물 선택 탭 */}
-            {plants.length > 0 ? (
+            {/* ✅ 기기 단위 탭 — 포트 수가 아닌 기기 수만큼만 생성 */}
+            {deviceGroups.length > 0 ? (
                 <div className="flex gap-2 overflow-x-auto pb-1">
-                    {plants.map(plant => (
+                    {deviceGroups.map(group => (
                         <button
-                            key={plant.id}
+                            key={group.deviceSerial}
                             onClick={() => {
-                                setSelectedPlant(plant);
+                                setSelectedGroup(group);
                                 setSelectedDiary(null);
                                 setShowForm(false);
                                 setShowList(true);
                             }}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors
-                                ${selectedPlant?.id === plant.id ? "bg-green-600 text-white" : "bg-white border border-gray-200 text-gray-600 hover:border-green-400"}`}
+                            className={`flex flex-col items-start px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors
+                                ${selectedGroup?.deviceSerial === group.deviceSerial
+                                    ? "bg-green-600 text-white"
+                                    : "bg-white border border-gray-200 text-gray-600 hover:border-green-400"
+                                }`}
                         >
-                            {SPECIES_EMOJI[plant.speciesName] || "🌱"} {plant.name}
+                            {/* 식물 이모지 + 품종명 */}
+                            <span>
+                                {SPECIES_EMOJI[group.speciesName] || "🌱"} {group.speciesName || "미등록"}
+                            </span>
+                            {/* ✅ 시리얼 번호 — 같은 식물 종류여도 구분 가능 */}
+                            <span className={`text-[10px] mt-0.5 font-normal ${
+                                selectedGroup?.deviceSerial === group.deviceSerial
+                                    ? "text-green-100"
+                                    : "text-gray-400"
+                            }`}>
+                                {group.deviceSerial}
+                            </span>
                         </button>
                     ))}
                 </div>
@@ -182,16 +236,18 @@ function DiaryPage() {
             )}
 
             {/* 메인 영역 */}
-            {selectedPlant && (
+            {selectedGroup && (
                 <div className="flex flex-col sm:flex-row gap-4">
-
-                    {/* ✅ 모바일: 목록과 상세를 토글 / sm 이상: 항상 둘 다 표시 */}
 
                     {/* 다이어리 목록 */}
                     <div className={`${showList || (!selectedDiary && !showForm) ? "block" : "hidden"} sm:block w-full sm:w-64 flex-shrink-0 bg-white rounded-xl border border-gray-200 overflow-hidden`}>
                         <div className="p-4 border-b border-gray-100">
                             <p className="text-sm font-semibold text-gray-700">
-                                {SPECIES_EMOJI[selectedPlant.speciesName] || "🌱"} {selectedPlant.name} 일지
+                                {SPECIES_EMOJI[selectedGroup.speciesName] || "🌱"} {selectedGroup.speciesName || "미등록"} 일지
+                            </p>
+                            {/* ✅ 기기 닉네임 + 시리얼 표시 */}
+                            <p className="text-xs text-gray-400 mt-0.5">
+                                {selectedGroup.deviceNickname && `${selectedGroup.deviceNickname} · `}{selectedGroup.deviceSerial}
                             </p>
                             <p className="text-xs text-gray-400 mt-0.5">총 {diaries.length}개</p>
                         </div>
@@ -220,7 +276,6 @@ function DiaryPage() {
                     <div className={`${!showList || selectedDiary || showForm ? "block" : "hidden"} sm:block flex-grow bg-white rounded-xl border border-gray-200 p-5 sm:p-6`}>
                         {showForm ? (
                             <div className="flex flex-col gap-4">
-                                {/* ✅ 모바일: 뒤로가기 버튼 */}
                                 <div className="flex items-center gap-2 sm:hidden">
                                     <button
                                         onClick={() => { setShowForm(false); setShowList(true); }}
@@ -297,7 +352,6 @@ function DiaryPage() {
                             </div>
                         ) : selectedDiary ? (
                             <div className="flex flex-col gap-4">
-                                {/* ✅ 모바일: 뒤로가기 버튼 */}
                                 <button
                                     onClick={() => { setSelectedDiary(null); setShowList(true); }}
                                     className="flex items-center gap-1 text-gray-400 hover:text-gray-600 text-sm sm:hidden w-fit"
@@ -311,7 +365,7 @@ function DiaryPage() {
                                     <div className="flex gap-2">
                                         <button onClick={() => handleEdit(selectedDiary)}
                                             className="text-xs text-green-600 hover:text-green-700 font-medium px-3 py-1.5 border border-green-200 rounded-lg hover:bg-green-50">수정</button>
-                                        <button onClick={() => handleDelete(selectedDiary.id)}
+                                        <button onClick={() => handleDelete(selectedDiary)}
                                             className="text-xs text-red-400 hover:text-red-500 px-3 py-1.5 border border-red-100 rounded-lg hover:bg-red-50">삭제</button>
                                     </div>
                                 </div>
