@@ -64,7 +64,8 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
             >✕</button>
 
             <div className="flex items-center gap-3 mb-4">
-                <span className="text-3xl">{speciesEmoji || emoji}</span>
+                {/* ✅ 기기 아이콘은 항상 고정 (품종 변경해도 유지) */}
+                <span className="text-3xl">{emoji}</span>
                 <div>
                     <div className="font-semibold text-gray-800 text-sm">{device.deviceNickname}</div>
                     <div className="text-xs text-gray-400">{device.serialNumber}</div>
@@ -205,8 +206,8 @@ function HomePage() {
         } catch (err) { console.error(err); }
     };
 
-    // 포트 ON → 대표 품종으로 해당 포트에 식물 자동 등록 + 포트 ON
-    // 포트 OFF → 해당 포트 식물 삭제 + 포트 OFF
+    // ✅ 포트 ON → 대표 품종으로 해당 포트에 식물 자동 등록 + 포트 ON
+    // ✅ 포트 OFF → 해당 포트 식물 삭제 + 포트 OFF
     const handlePortClick = async (device, portIndex, isCurrentlyOn) => {
         const deviceSpecies = getDeviceSpecies(device.serialNumber);
 
@@ -214,7 +215,7 @@ function HomePage() {
             // ON → OFF
             const portPlant = device.plants?.find(p => p.portIndex === portIndex);
             if (portPlant) {
-                if (!window.confirm(`P${portIndex + 1} 포트를 OFF할까요?`)) return;
+                if (!window.confirm(`P${portIndex + 1} 포트를 OFF하면 식물이 삭제됩니다. 계속할까요?`)) return;
                 try {
                     await deletePlantApi(portPlant.id);
                 } catch (err) {
@@ -280,8 +281,8 @@ function HomePage() {
     const sortedDevices = getSortedDevices();
 
     return (
-        <div className="flex gap-6">
-            <div className="w-64 flex-shrink-0 flex flex-col gap-4">
+        <div className="flex flex-col lg:flex-row gap-6">
+            <div className="w-full lg:w-64 lg:flex-shrink-0 flex flex-col gap-4">
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                     <div className="text-sm font-semibold text-gray-700 mb-3">바로가기</div>
                     <div className="grid grid-cols-2 gap-2">
@@ -353,7 +354,7 @@ function HomePage() {
                         </button>
                     </div>
                 ) : (
-                    <div className={`grid grid-cols-2 gap-4 ${sortedDevices.length > 4 ? "max-h-[900px] overflow-y-auto pr-1" : ""}`}>
+                    <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 ${sortedDevices.length > 4 ? "max-h-[900px] overflow-y-auto pr-1" : ""}`}>
                         {sortedDevices.map(device => (
                             <DeviceCard
                                 key={device.serialNumber}

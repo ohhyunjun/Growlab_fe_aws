@@ -70,18 +70,13 @@ function MonitoringPage() {
                 if (found) {
                     const targetPort = location.state?.portIndex;
                     if (targetPort !== null && targetPort !== undefined) {
-                        // ✅ 홈에서 넘어온 포트가 있으면 우선 사용
                         setSelectedPort(targetPort);
                     } else if (found.plants?.length > 0) {
-                        // ✅ portStatus 기준으로 ON 상태인 포트 중 식물이 있는 첫 번째 포트 선택
                         const portStatus = found.portStatus || "00000000";
-                        const onPortWithPlant = found.plants.find(
-                            p => portStatus[p.portIndex] === "1"
-                        );
+                        const onPortWithPlant = found.plants.find(p => portStatus[p.portIndex] === "1");
                         if (onPortWithPlant) {
                             setSelectedPort(onPortWithPlant.portIndex);
                         } else {
-                            // ON 포트에 식물이 없으면 식물이 있는 첫 번째 포트
                             const firstPlant = found.plants.reduce((a, b) =>
                                 a.portIndex < b.portIndex ? a : b
                             );
@@ -134,9 +129,7 @@ function MonitoringPage() {
         </div>
     );
 
-    // ✅ portStatus 문자열 ("00000000" 등) 에서 각 포트 ON 여부 파악
     const portStatus = device.portStatus || "00000000";
-
     const selectedPlant = device.plants?.find(p => p.portIndex === selectedPort) ?? null;
     const representativePlant = device.plants?.find(p => p.species) ?? null;
     const emoji = representativePlant ? (SPECIES_EMOJI[representativePlant.species] || "🌱") : "🌱";
@@ -159,7 +152,8 @@ function MonitoringPage() {
 
     return (
         <div className="min-h-screen bg-gray-50">
-            <div className="bg-white border-b border-gray-100 px-6 py-3 flex items-center gap-3">
+            {/* 상단 헤더 */}
+            <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-3 flex items-center gap-3">
                 <button onClick={() => navigate("/")} className="text-gray-400 hover:text-gray-600 text-sm">←</button>
                 <span className="font-semibold text-gray-800 text-sm">{device.deviceNickname} 모니터링</span>
                 <span className="flex items-center gap-1 text-xs text-green-500 font-medium">
@@ -168,11 +162,13 @@ function MonitoringPage() {
                 </span>
             </div>
 
-            <div className="p-5 grid grid-cols-12 gap-4 max-w-screen-xl mx-auto">
+            {/* ✅ 반응형 그리드: 모바일 1열 → lg 3단 */}
+            <div className="p-4 sm:p-5 flex flex-col lg:grid lg:grid-cols-12 gap-4 max-w-screen-xl mx-auto">
 
                 {/* ───── 좌측 사이드바 ───── */}
-                <div className="col-span-3 flex flex-col gap-3">
+                <div className="lg:col-span-3 flex flex-col gap-3">
 
+                    {/* 식물 정보 */}
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                         <div className="flex items-center gap-3 mb-4">
                             <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center text-2xl">
@@ -201,12 +197,13 @@ function MonitoringPage() {
                         )}
                     </div>
 
+                    {/* Vision AI — 모바일에서는 가로 2열 */}
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                         <div className="flex items-center gap-2 mb-3">
                             <span className="text-sm">🔍</span>
                             <h2 className="text-sm font-semibold text-gray-700">Vision AI 분석</h2>
                         </div>
-                        <div className="flex flex-col gap-2 text-xs">
+                        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-1 gap-2 text-xs">
                             {[
                                 { label: "생육 상태", value: "✓ 정상", color: "text-green-500" },
                                 { label: "병충해", value: "✓ 이상없음", color: "text-green-500" },
@@ -221,14 +218,15 @@ function MonitoringPage() {
                         </div>
                     </div>
 
+                    {/* 최근 알림 — 모바일에서 높이 제한 완화 */}
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm flex flex-col">
                         <div className="flex items-center gap-2 mb-3">
                             <span className="text-sm">🔔</span>
                             <h2 className="text-sm font-semibold text-gray-700">최근 알림</h2>
                         </div>
-                        <div className="flex flex-col gap-3 text-xs text-gray-500 overflow-y-auto" style={{ height: "550px" }}>
+                        <div className="flex flex-col gap-3 text-xs text-gray-500 overflow-y-auto max-h-48 lg:max-h-none" style={{ height: undefined }}>
                             {notices.length === 0 ? (
-                                <div className="flex items-center justify-center h-full text-gray-300">알림이 없어요</div>
+                                <div className="flex items-center justify-center py-6 text-gray-300">알림이 없어요</div>
                             ) : (
                                 notices.map(notice => (
                                     <div key={notice.id}
@@ -244,27 +242,28 @@ function MonitoringPage() {
                 </div>
 
                 {/* ───── 중앙 콘텐츠 ───── */}
-                <div className="col-span-6 flex flex-col gap-4">
+                <div className="lg:col-span-6 flex flex-col gap-4">
 
+                    {/* 온도/습도 */}
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+                        <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs text-gray-400 font-medium tracking-widest">TEMPERATURE</span>
                                 <span className="text-xl">🌡️</span>
                             </div>
-                            <div className={`text-4xl font-bold ${tempOk ? "text-green-500" : "text-yellow-500"}`}>
+                            <div className={`text-3xl sm:text-4xl font-bold ${tempOk ? "text-green-500" : "text-yellow-500"}`}>
                                 {temp !== null && temp !== undefined ? `${temp}°C` : "-"}
                             </div>
                             <div className="mt-2 text-xs text-gray-400">
                                 {tempOk ? "✓ 적정 범위" : temp !== null ? "⚠ 범위 벗어남" : "데이터 없음"}
                             </div>
                         </div>
-                        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+                        <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs text-gray-400 font-medium tracking-widest">HUMIDITY</span>
                                 <span className="text-xl">💧</span>
                             </div>
-                            <div className={`text-4xl font-bold ${humidOk ? "text-green-500" : "text-yellow-500"}`}>
+                            <div className={`text-3xl sm:text-4xl font-bold ${humidOk ? "text-green-500" : "text-yellow-500"}`}>
                                 {humidity !== null && humidity !== undefined ? `${humidity}%` : "-"}
                             </div>
                             <div className="mt-2 text-xs text-gray-400">
@@ -273,14 +272,15 @@ function MonitoringPage() {
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+                    {/* 양액 시스템 */}
+                    <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm">
                         <h2 className="text-sm font-semibold text-gray-700 mb-4">📊 양액 시스템 모니터링</h2>
                         <div className="grid grid-cols-3 gap-4">
                             <div className="flex flex-col items-center gap-2">
-                                <div className="w-16 h-28 rounded-xl border-2 border-blue-100 bg-blue-50 relative overflow-hidden flex flex-col justify-end">
+                                <div className="w-14 sm:w-16 h-24 sm:h-28 rounded-xl border-2 border-blue-100 bg-blue-50 relative overflow-hidden flex flex-col justify-end">
                                     <div className="bg-blue-400 w-full rounded-b-lg transition-all" style={{ height: `${waterLevel ?? 0}%` }} />
                                     <div className="absolute inset-0 flex items-center justify-center">
-                                        <span className="text-sm font-bold text-blue-700">
+                                        <span className="text-xs sm:text-sm font-bold text-blue-700">
                                             {waterLevel !== null && waterLevel !== undefined ? `${waterLevel}%` : "-"}
                                         </span>
                                     </div>
@@ -291,8 +291,8 @@ function MonitoringPage() {
                                 </span>
                             </div>
                             <div className="flex flex-col items-center justify-center gap-2">
-                                <div className="w-16 h-16 rounded-full border-4 border-green-100 flex items-center justify-center bg-green-50">
-                                    <span className="text-lg font-bold text-green-600">{ph ?? "-"}</span>
+                                <div className="w-14 sm:w-16 h-14 sm:h-16 rounded-full border-4 border-green-100 flex items-center justify-center bg-green-50">
+                                    <span className="text-base sm:text-lg font-bold text-green-600">{ph ?? "-"}</span>
                                 </div>
                                 <span className="text-xs text-gray-400">PH LEVEL</span>
                                 <span className={`text-xs font-medium ${phOk ? "text-green-500" : "text-yellow-500"}`}>
@@ -300,8 +300,8 @@ function MonitoringPage() {
                                 </span>
                             </div>
                             <div className="flex flex-col items-center justify-center gap-2">
-                                <div className="w-16 h-16 rounded-full border-4 border-purple-100 flex items-center justify-center bg-purple-50">
-                                    <span className="text-lg font-bold text-purple-600">{ec ?? "-"}</span>
+                                <div className="w-14 sm:w-16 h-14 sm:h-16 rounded-full border-4 border-purple-100 flex items-center justify-center bg-purple-50">
+                                    <span className="text-base sm:text-lg font-bold text-purple-600">{ec ?? "-"}</span>
                                 </div>
                                 <span className="text-xs text-gray-400">TDS (PPM)</span>
                                 <span className={`text-xs font-medium ${ecOk ? "text-green-500" : "text-yellow-500"}`}>
@@ -312,7 +312,7 @@ function MonitoringPage() {
                     </div>
 
                     {/* 생육 변화 그래프 */}
-                    <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+                    <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm">
                         <div className="flex items-center justify-between mb-3">
                             <h2 className="text-sm font-semibold text-gray-700">📈 생육 변화</h2>
                             <div className="flex gap-1">
@@ -325,12 +325,11 @@ function MonitoringPage() {
                             </div>
                         </div>
 
-                        {/* ✅ 포트 선택 버튼 — portStatus 기준으로 ON/OFF 표시 */}
+                        {/* 포트 선택 버튼 */}
                         <div className="flex gap-1 mb-3 flex-wrap">
                             {PORT_OPTIONS.map(port => {
                                 const portPlant = device.plants?.find(p => p.portIndex === port);
-                                const isPortOn = portStatus[port] === "1"; // ✅ portStatus 체크
-
+                                const isPortOn = portStatus[port] === "1";
                                 return (
                                     <button key={port} onClick={() => setSelectedPort(port)}
                                         className={`text-xs px-2.5 py-1 rounded-lg transition-colors border ${
@@ -341,7 +340,6 @@ function MonitoringPage() {
                                                     : "bg-gray-50 text-gray-300 border-gray-100"
                                         }`}
                                     >
-                                        {/* ✅ ON 상태이고 식물이 있을 때만 이모지 표시 */}
                                         {isPortOn && portPlant
                                             ? `${port + 1} ${SPECIES_EMOJI[portPlant.species] || "🌱"}`
                                             : `${port + 1}`
@@ -353,7 +351,6 @@ function MonitoringPage() {
 
                         <div className="text-xs text-gray-400 mb-2">
                             포트 {selectedPort + 1} · {selectedPlant ? selectedPlant.name : "식물 미등록"}
-                            {/* ✅ 현재 선택 포트의 ON/OFF 상태도 표시 */}
                             <span className={`ml-2 font-medium ${portStatus[selectedPort] === "1" ? "text-green-500" : "text-gray-300"}`}>
                                 {portStatus[selectedPort] === "1" ? "● ON" : "○ OFF"}
                             </span>
@@ -361,7 +358,7 @@ function MonitoringPage() {
 
                         {selectedPlant ? (
                             <>
-                                <div className="h-36 flex items-end justify-between gap-1">
+                                <div className="h-32 sm:h-36 flex items-end justify-between gap-1">
                                     {visibleData.map((v, i) => (
                                         <div key={i}
                                             className="flex-1 bg-green-100 rounded-t-sm hover:bg-green-400 transition-colors"
@@ -375,7 +372,7 @@ function MonitoringPage() {
                                 </div>
                             </>
                         ) : (
-                            <div className="h-36 flex items-center justify-center text-gray-300 text-sm">
+                            <div className="h-32 sm:h-36 flex items-center justify-center text-gray-300 text-sm">
                                 이 포트에 등록된 식물이 없어요
                             </div>
                         )}
@@ -383,10 +380,11 @@ function MonitoringPage() {
                 </div>
 
                 {/* ───── 우측 제어판 ───── */}
-                <div className="col-span-3 flex flex-col gap-3">
+                <div className="lg:col-span-3 flex flex-col gap-3">
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                         <h2 className="text-sm font-semibold text-gray-700 mb-4">⚙️ 시스템 제어</h2>
 
+                        {/* LED */}
                         <div className="mb-4 pb-4 border-b border-gray-50">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-medium text-gray-600">💡 LED 조명</span>
@@ -409,6 +407,7 @@ function MonitoringPage() {
                             </div>
                         </div>
 
+                        {/* 타워 회전 */}
                         <div className="mb-4 pb-4 border-b border-gray-50">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-medium text-gray-600">🔄 타워 회전 (스텝모터)</span>
@@ -423,6 +422,7 @@ function MonitoringPage() {
                             <button className="w-full mt-2 border border-gray-200 text-xs py-1.5 rounded-lg hover:bg-gray-50 transition-colors">즉시 회전</button>
                         </div>
 
+                        {/* 카메라 Z축 */}
                         <div className="mb-4 pb-4 border-b border-gray-50">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-medium text-gray-600">📷 ESP32-CAM Z축</span>
@@ -437,6 +437,7 @@ function MonitoringPage() {
                             <button className="w-full mt-2 border border-gray-200 text-xs py-1.5 rounded-lg hover:bg-gray-50 transition-colors">즉시 이동</button>
                         </div>
 
+                        {/* 자동 촬영 */}
                         <div className={`mb-4 rounded-xl p-3 transition-colors ${autoCapture ? "bg-green-50 border border-green-100" : "bg-gray-50"}`}>
                             <div className="flex items-center justify-between mb-3">
                                 <span className={`text-xs font-medium ${autoCapture ? "text-green-700" : "text-gray-600"}`}>
@@ -484,7 +485,8 @@ function MonitoringPage() {
                         </button>
                     </div>
 
-                    <div className="bg-green-50 rounded-2xl border border-green-100 p-4 overflow-y-auto" style={{ height: "200px" }}>
+                    {/* AI 조언 */}
+                    <div className="bg-green-50 rounded-2xl border border-green-100 p-4 overflow-y-auto max-h-48 lg:max-h-none" style={{ height: undefined }}>
                         <div className="flex items-center gap-2 mb-3">
                             <span className="text-sm">🤖</span>
                             <h2 className="text-sm font-semibold text-green-700">AI 재배 조언</h2>
