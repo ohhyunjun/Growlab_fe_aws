@@ -11,6 +11,7 @@ import ProtectedRoute from "../components/layouts/ProtectedRoute";
 import NotificationPage from "../pages/notifications/NotificationPage";
 import DiaryPage from "../pages/diary/DiaryPage";
 import MonitoringPage from "../pages/monitoring/MonitoringPage";
+import MarketPricePage from "../pages/marketprice/Marketpricepage";
 
 function AppRoutes() {
     return (
@@ -43,6 +44,9 @@ function AppRoutes() {
             <Route path="/diary" element={<ProtectedRoute><DiaryPage /></ProtectedRoute>} />
 
             <Route path="/monitoring/:serialNumber" element={<MonitoringPage />} />
+
+            {/* 도소매 가격 */}
+            <Route path="/market-price" element={<MarketPricePage />} />
         </Routes>
     )
 }
