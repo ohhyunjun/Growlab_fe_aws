@@ -1,17 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
-
-const API_BASE = "http://localhost:8080/api/prices";
-const authHeader = () => ({
-    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-});
+import { getLatestPrice, getWeeklyPrice } from "../../api/marketpriceApi";
 
 // GrowLab에서 재배하는 품목 목록
 const ITEMS = [
     { name: "방울토마토", emoji: "🍅" },
     { name: "청상추",    emoji: "🥬" },
-    { name: "적상추",    emoji: "🥬" },
+    { name: "적상추",    emoji: "🥬" }, 
     { name: "바질",     emoji: "🌿" },
     { name: "딸기",     emoji: "🍓" },
     { name: "파프리카", emoji: "🌶️" },
@@ -64,8 +59,8 @@ function PriceCard({ item, onClick, isSelected }) {
     useEffect(() => {
         setStatus("loading");
         Promise.all([
-            axios.get(`${API_BASE}/latest?itemName=${encodeURIComponent(item.name)}`, authHeader()),
-            axios.get(`${API_BASE}/weekly?itemName=${encodeURIComponent(item.name)}`, authHeader()),
+            getLatestPrice(item.name),
+            getWeeklyPrice(item.name)
         ])
             .then(([latestRes, weeklyRes]) => {
                 setLatest(latestRes.data);
@@ -209,7 +204,7 @@ function DetailPanel({ item, latest, weekly, onClose }) {
                             const wh = d.wholesalePrice ?? 0;
                             const re = d.retailPrice ?? 0;
                             return (
-                                <div key={i} className="flex-1 flex flex-col items-center gap-0.5 group">
+                                <div key={i} className="flex-1 flex flex-col items-center gap-0.5 group relative">
                                     {/* tooltip */}
                                     <div className="hidden group-hover:flex flex-col items-center absolute -translate-y-12 bg-gray-800 text-white text-[10px] rounded-lg px-2 py-1 z-10 whitespace-nowrap">
                                         <span>도: {wh.toLocaleString()}원</span>
