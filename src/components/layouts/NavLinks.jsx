@@ -1,6 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
 
-
 function NavLinks({ onClick }) {
     const navigate = useNavigate();
     const token = localStorage.getItem("token");
@@ -17,6 +16,7 @@ function NavLinks({ onClick }) {
     return (
         <>
             <li><Link className={baseStyle} to="/articles" onClick={onClick}>👥 커뮤니티</Link></li>
+            <li><Link className={baseStyle} to="/market-price" onClick={onClick}>🏪 도소매가격</Link></li>
             <li><Link className={baseStyle} to="/notifications" onClick={onClick}>🔔 알림</Link></li>
             {token ? (
                 <>
