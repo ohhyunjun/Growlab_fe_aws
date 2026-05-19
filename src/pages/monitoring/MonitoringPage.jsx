@@ -1,7 +1,8 @@
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { getUserDevicesApi } from "../../api/deviceApi";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { getUserDevicesApi, updateLedApi, updatePhotoIntervalApi } from "../../api/deviceApi";
 import { getAllNoticesApi } from "../../api/noticeApi";
+import { getSseStreamUrl } from "../../api/sensorApi";
 
 const SPECIES_EMOJI = {
     "방울토마토": "🍅", "청상추": "🥬", "적상추": "🥬",
@@ -13,40 +14,68 @@ const SPECIES_EMOJI = {
 
 const STAGE_LABEL = { SEED: "씨앗", GERMINATION: "발아", MATURE: "성숙" };
 
+// sessionStorage 키: 새로고침 후에도 마지막 센서값 유지
+const getSensorKey = (serial) => `growlab_sensor_${serial}`;
+const getNoticeKey = (serial) => `growlab_notices_${serial}`;
+
 function MonitoringPage() {
     const { serialNumber } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
+
+    // ── 디바이스 기본 정보
     const [device, setDevice] = useState(null);
-    const [notices, setNotices] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    // ── 실시간 센서 데이터 (SSE) — sessionStorage로 새로고침 복원
+    const [sensorData, setSensorData] = useState(() => {
+        try {
+            const saved = sessionStorage.getItem(getSensorKey(serialNumber));
+            return saved ? JSON.parse(saved) : {
+                temperature: null, humidity: null, ph: null, tds: null, water_level_status: null,
+            };
+        } catch {
+            return { temperature: null, humidity: null, ph: null, tds: null, water_level_status: null };
+        }
+    });
+
+    // ── SSE 연결 상태
+    const [sseConnected, setSseConnected] = useState(false);
+    const sseRef = useRef(null);
+    const reconnectTimerRef = useRef(null);
+
+    // ── 알림
+    const [notices, setNotices] = useState(() => {
+        try {
+            const saved = sessionStorage.getItem(getNoticeKey(serialNumber));
+            return saved ? JSON.parse(saved) : [];
+        } catch { return []; }
+    });
+    const [noticeVisibleCount, setNoticeVisibleCount] = useState(10);
+
+    // ── UI 상태
     const [range, setRange] = useState(14);
     const [selectedPort, setSelectedPort] = useState(0);
     const RANGE_OPTIONS = [7, 14, 30, 60];
     const PORT_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7];
 
     const storageKey = `device_settings_${serialNumber}`;
-
     const getSavedSettings = () => {
         try {
             const saved = localStorage.getItem(storageKey);
             return saved ? JSON.parse(saved) : null;
         } catch { return null; }
     };
-
     const saved = getSavedSettings();
 
-    const [autoCapture, setAutoCapture] = useState(saved?.autoCapture ?? false);
     const [isLedOn, setIsLedOn] = useState(saved?.isLedOn ?? true);
     const [isLedAuto, setIsLedAuto] = useState(saved?.isLedAuto ?? false);
-    const [rotationAngle, setRotationAngle] = useState(saved?.rotationAngle ?? 0);
-    const [cameraHeight, setCameraHeight] = useState(saved?.cameraHeight ?? 50);
     const [ledStart, setLedStart] = useState(saved?.ledStart ?? "06:00");
-    const [ledEnd, setLedEnd] = useState(saved?.ledEnd ?? "10:00");
-    const [captureStart, setCaptureStart] = useState(saved?.captureStart ?? "09:00");
-    const [captureInterval, setCaptureInterval] = useState(saved?.captureInterval ?? "3시간");
+    const [ledEnd, setLedEnd] = useState(saved?.ledEnd ?? "22:00");
+    const [captureInterval, setCaptureInterval] = useState(saved?.captureInterval ?? 12);
     const [saveMessage, setSaveMessage] = useState("");
-    const [noticeVisibleCount, setNoticeVisibleCount] = useState(10);
+    const [ledSaving, setLedSaving] = useState(false);
+    const [captureSaving, setCaptureSaving] = useState(false);
 
     const growthDataMap = {
         0: [3,4,5,6,7,8,9,10,11,12,13,14],
@@ -58,10 +87,10 @@ function MonitoringPage() {
         6: [4,5,6,7,8,9,10,11,12,13,14,15],
         7: [6,6,7,7,8,8,9,9,10,10,11,11],
     };
-
     const growthData = growthDataMap[selectedPort] || [];
     const visibleData = growthData.slice(-range);
 
+    // ── 1. 디바이스 정보 + 알림 초기 로드
     useEffect(() => {
         const fetchData = async () => {
             try {
@@ -89,33 +118,124 @@ function MonitoringPage() {
 
                 const noticeRes = await getAllNoticesApi();
                 setNotices(noticeRes.data);
+                sessionStorage.setItem(getNoticeKey(serialNumber), JSON.stringify(noticeRes.data));
             } catch (e) { console.error(e); }
             finally { setLoading(false); }
         };
         fetchData();
     }, [serialNumber]);
 
-    const handleSaveSettings = () => {
-        localStorage.setItem(storageKey, JSON.stringify({
-            autoCapture, isLedOn, isLedAuto, rotationAngle, cameraHeight,
-            ledStart, ledEnd, captureStart, captureInterval
-        }));
-        setSaveMessage("✓ 저장되었습니다");
-        setTimeout(() => setSaveMessage(""), 2000);
+    // ── 2. SSE 연결 (센서 실시간)
+    const connectSSE = useCallback(() => {
+        if (sseRef.current) { sseRef.current.close(); sseRef.current = null; }
+
+        const es = new EventSource(getSseStreamUrl(serialNumber));
+        sseRef.current = es;
+
+        es.addEventListener("connect", () => setSseConnected(true));
+
+        es.addEventListener("sensor", (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                setSensorData(prev => {
+                    const next = {
+                        temperature:        data.temperature        ?? prev.temperature,
+                        humidity:           data.humidity           ?? prev.humidity,
+                        ph:                 data.ph                 ?? prev.ph,
+                        tds:                data.tds                ?? prev.tds,
+                        water_level_status: data.water_level_status ?? prev.water_level_status,
+                    };
+                    sessionStorage.setItem(getSensorKey(serialNumber), JSON.stringify(next));
+                    return next;
+                });
+                setSseConnected(true);
+            } catch (err) { console.error("[SSE] parse error", err); }
+        });
+
+        es.onerror = () => {
+            setSseConnected(false);
+            es.close();
+            sseRef.current = null;
+            reconnectTimerRef.current = setTimeout(connectSSE, 5000);
+        };
+    }, [serialNumber]);
+
+    useEffect(() => {
+        connectSSE();
+        return () => {
+            if (sseRef.current) sseRef.current.close();
+            if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+        };
+    }, [connectSSE]);
+
+    // ── 3. 알림 폴링 (60초마다 새 알림 prepend)
+    useEffect(() => {
+        const pollNotices = async () => {
+            try {
+                const res = await getAllNoticesApi();
+                setNotices(prev => {
+                    const existingIds = new Set(prev.map(n => n.id));
+                    const newOnes = res.data.filter(n => !existingIds.has(n.id));
+                    if (newOnes.length === 0) return prev;
+                    const merged = [...newOnes, ...prev];
+                    sessionStorage.setItem(getNoticeKey(serialNumber), JSON.stringify(merged));
+                    return merged;
+                });
+            } catch (e) { console.error("[Notice poll]", e); }
+        };
+        const timer = setInterval(pollNotices, 60000);
+        return () => clearInterval(timer);
+    }, [serialNumber]);
+
+    // ── LED 제어 핸들러
+    const handleLedManual = async (on) => {
+        setIsLedOn(on);
+        setLedSaving(true);
+        try {
+            await updateLedApi(serialNumber, { ledMode: false, ledStatus: on });
+            localStorage.setItem(storageKey, JSON.stringify({ ...getSavedSettings(), isLedOn: on, isLedAuto: false }));
+        } catch (e) { console.error("[LED] 수동 제어 실패", e); }
+        finally { setLedSaving(false); }
+    };
+
+    const handleLedModeToggle = (auto) => {
+        setIsLedAuto(auto);
+        localStorage.setItem(storageKey, JSON.stringify({ ...getSavedSettings(), isLedAuto: auto }));
+    };
+
+    const handleLedScheduleSave = async () => {
+        setLedSaving(true);
+        try {
+            await updateLedApi(serialNumber, { ledMode: true, ledOnTime: ledStart, ledOffTime: ledEnd });
+            localStorage.setItem(storageKey, JSON.stringify({ ...getSavedSettings(), isLedAuto: true, ledStart, ledEnd }));
+            setSaveMessage("✓ LED 스케줄 저장됨");
+            setTimeout(() => setSaveMessage(""), 2000);
+        } catch (e) {
+            setSaveMessage("⚠ LED 저장 실패");
+            setTimeout(() => setSaveMessage(""), 2000);
+        } finally { setLedSaving(false); }
+    };
+
+    // ── 촬영 주기 핸들러
+    const handleCaptureSave = async () => {
+        setCaptureSaving(true);
+        try {
+            await updatePhotoIntervalApi(serialNumber, captureInterval);
+            localStorage.setItem(storageKey, JSON.stringify({ ...getSavedSettings(), captureInterval }));
+            setSaveMessage("✓ 촬영 주기 저장됨");
+            setTimeout(() => setSaveMessage(""), 2000);
+        } catch (e) {
+            setSaveMessage("⚠ 촬영 주기 저장 실패");
+            setTimeout(() => setSaveMessage(""), 2000);
+        } finally { setCaptureSaving(false); }
     };
 
     const handleResetSettings = () => {
         if (!window.confirm("설정을 초기화할까요?")) return;
         localStorage.removeItem(storageKey);
-        setAutoCapture(false);
-        setIsLedOn(true);
-        setIsLedAuto(false);
-        setRotationAngle(0);
-        setCameraHeight(50);
-        setLedStart("06:00");
-        setLedEnd("10:00");
-        setCaptureStart("09:00");
-        setCaptureInterval("3시간");
+        setIsLedOn(true); setIsLedAuto(false);
+        setLedStart("06:00"); setLedEnd("22:00");
+        setCaptureInterval(12);
         setSaveMessage("✓ 초기화되었습니다");
         setTimeout(() => setSaveMessage(""), 2000);
     };
@@ -125,30 +245,26 @@ function MonitoringPage() {
             <div className="text-gray-400 text-sm">로딩 중...</div>
         </div>
     );
-
     if (!device) return (
         <div className="flex items-center justify-center min-h-screen">
             <div className="text-gray-400 text-sm">기기를 찾을 수 없어요</div>
         </div>
     );
 
+    // ── 센서값 (SSE 실시간)
+    const { temperature: temp, humidity, ph, tds, water_level_status } = sensorData;
+
+    const waterOk      = water_level_status === true;
+    const waterHasData = water_level_status !== null;
+    const tempOk  = temp     !== null && temp     >= 18 && temp     <= 28;
+    const humidOk = humidity !== null && humidity >= 50 && humidity <= 80;
+    const phOk    = ph       !== null && ph       >= 5.5 && ph      <= 7.0;
+    const tdsOk   = tds      !== null && tds      >= 200 && tds     <= 800;
+
     const portStatus = device.portStatus || "00000000";
     const selectedPlant = device.plants?.find(p => p.portIndex === selectedPort) ?? null;
     const representativePlant = device.plants?.find(p => p.species) ?? null;
     const emoji = representativePlant ? (SPECIES_EMOJI[representativePlant.species] || "🌱") : "🌱";
-
-    const temp = device.temperature;
-    const humidity = device.humidity;
-    const waterLevel = device.waterLevel;
-    const ph = device.ph;
-    const ec = device.ec;
-
-    const tempOk = temp !== null && temp >= 18 && temp <= 28;
-    const humidOk = humidity !== null && humidity >= 50 && humidity <= 80;
-    const waterOk = waterLevel !== null && waterLevel >= 50;
-    const phOk = ph !== null && ph >= 5.5 && ph <= 7.0;
-    const ecOk = ec !== null && ec >= 1.0 && ec <= 2.5;
-
     const daysSincePlanted = selectedPlant?.plantedAt
         ? Math.floor((new Date() - new Date(selectedPlant.plantedAt)) / (1000 * 60 * 60 * 24))
         : null;
@@ -159,9 +275,10 @@ function MonitoringPage() {
             <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-3 flex items-center gap-3">
                 <button onClick={() => navigate("/")} className="text-gray-400 hover:text-gray-600 text-sm">←</button>
                 <span className="font-semibold text-gray-800 text-sm">{device.deviceNickname} 모니터링</span>
-                <span className="flex items-center gap-1 text-xs text-green-500 font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block animate-pulse"></span>
-                    실시간 연결
+                <span className="flex items-center gap-1 text-xs font-medium"
+                    style={{ color: sseConnected ? "#22c55e" : "#f59e0b" }}>
+                    <span className={`w-1.5 h-1.5 rounded-full inline-block ${sseConnected ? "bg-green-500 animate-pulse" : "bg-yellow-400"}`} />
+                    {sseConnected ? "실시간 연결" : "재연결 중..."}
                 </span>
             </div>
 
@@ -173,9 +290,7 @@ function MonitoringPage() {
                     {/* 식물 정보 */}
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                         <div className="flex items-center gap-3 mb-4">
-                            <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center text-2xl">
-                                {emoji}
-                            </div>
+                            <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center text-2xl">{emoji}</div>
                             <div>
                                 <div className="font-bold text-gray-800 text-sm">{representativePlant?.species || "미등록"}</div>
                                 <div className="text-xs text-gray-400">{serialNumber} · 포트 {selectedPort + 1}</div>
@@ -233,7 +348,6 @@ function MonitoringPage() {
                                 </span>
                             )}
                         </div>
-
                         <div className="min-h-[230px] flex flex-col">
                             {notices.length === 0 ? (
                                 <div className="flex-1 flex flex-col items-center justify-center gap-2 text-gray-300">
@@ -253,18 +367,14 @@ function MonitoringPage() {
                                         ))}
                                     </div>
                                     {noticeVisibleCount < notices.length && (
-                                        <button
-                                            onClick={() => setNoticeVisibleCount(prev => prev + 10)}
-                                            className="mt-3 w-full text-xs text-gray-400 hover:text-green-600 py-1.5 border border-dashed border-gray-200 hover:border-green-300 rounded-lg transition-colors"
-                                        >
+                                        <button onClick={() => setNoticeVisibleCount(prev => prev + 10)}
+                                            className="mt-3 w-full text-xs text-gray-400 hover:text-green-600 py-1.5 border border-dashed border-gray-200 hover:border-green-300 rounded-lg transition-colors">
                                             더보기 ({notices.length - noticeVisibleCount}개 남음)
                                         </button>
                                     )}
                                     {noticeVisibleCount > 10 && (
-                                        <button
-                                            onClick={() => setNoticeVisibleCount(10)}
-                                            className="mt-1 w-full text-xs text-gray-300 hover:text-gray-500 py-1 transition-colors"
-                                        >
+                                        <button onClick={() => setNoticeVisibleCount(10)}
+                                            className="mt-1 w-full text-xs text-gray-300 hover:text-gray-500 py-1 transition-colors">
                                             접기
                                         </button>
                                     )}
@@ -284,7 +394,7 @@ function MonitoringPage() {
                                 <span className="text-xs text-gray-400 font-medium tracking-widest">TEMPERATURE</span>
                                 <span className="text-xl">🌡️</span>
                             </div>
-                            <div className={`text-3xl sm:text-4xl font-bold ${tempOk ? "text-green-500" : "text-yellow-500"}`}>
+                            <div className={`text-3xl sm:text-4xl font-bold transition-colors ${tempOk ? "text-green-500" : temp !== null ? "text-yellow-500" : "text-gray-300"}`}>
                                 {temp !== null && temp !== undefined ? `${temp}°C` : "-"}
                             </div>
                             <div className="mt-2 text-xs text-gray-400">
@@ -296,7 +406,7 @@ function MonitoringPage() {
                                 <span className="text-xs text-gray-400 font-medium tracking-widest">HUMIDITY</span>
                                 <span className="text-xl">💧</span>
                             </div>
-                            <div className={`text-3xl sm:text-4xl font-bold ${humidOk ? "text-green-500" : "text-yellow-500"}`}>
+                            <div className={`text-3xl sm:text-4xl font-bold transition-colors ${humidOk ? "text-green-500" : humidity !== null ? "text-yellow-500" : "text-gray-300"}`}>
                                 {humidity !== null && humidity !== undefined ? `${humidity}%` : "-"}
                             </div>
                             <div className="mt-2 text-xs text-gray-400">
@@ -309,36 +419,91 @@ function MonitoringPage() {
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm">
                         <h2 className="text-sm font-semibold text-gray-700 mb-4">📊 양액 시스템 모니터링</h2>
                         <div className="grid grid-cols-3 gap-4">
+
+                            {/* WATER — 파란 원 + 물결 애니메이션 (있다/없다) */}
                             <div className="flex flex-col items-center gap-2">
-                                <div className="w-14 sm:w-16 h-24 sm:h-28 rounded-xl border-2 border-blue-100 bg-blue-50 relative overflow-hidden flex flex-col justify-end">
-                                    <div className="bg-blue-400 w-full rounded-b-lg transition-all" style={{ height: `${waterLevel ?? 0}%` }} />
-                                    <div className="absolute inset-0 flex items-center justify-center">
-                                        <span className="text-xs sm:text-sm font-bold text-blue-700">
-                                            {waterLevel !== null && waterLevel !== undefined ? `${waterLevel}%` : "-"}
+                                <div className="relative w-14 sm:w-16 h-14 sm:h-16 rounded-full overflow-hidden"
+                                    style={{
+                                        border: !waterHasData ? "4px solid #e5e7eb"
+                                              : waterOk       ? "4px solid #93c5fd"
+                                                              : "4px solid #fca5a5",
+                                        background: !waterHasData ? "#f9fafb"
+                                                  : waterOk       ? "#eff6ff"
+                                                                  : "#fef2f2",
+                                    }}>
+                                    {waterOk && (
+                                        <>
+                                            <div style={{
+                                                position: "absolute", bottom: 0, left: "-50%",
+                                                width: "200%", height: "55%",
+                                                background: "rgba(96,165,250,0.4)",
+                                                borderRadius: "40%",
+                                                animation: "wave1 2.4s ease-in-out infinite",
+                                            }}/>
+                                            <div style={{
+                                                position: "absolute", bottom: 0, left: "-50%",
+                                                width: "200%", height: "50%",
+                                                background: "rgba(59,130,246,0.55)",
+                                                borderRadius: "38%",
+                                                animation: "wave2 2s ease-in-out infinite",
+                                            }}/>
+                                        </>
+                                    )}
+                                    <div className="absolute inset-0 flex items-center justify-center z-10">
+                                        <span className="text-xs font-bold"
+                                            style={{ color: !waterHasData ? "#d1d5db" : waterOk ? "#1d4ed8" : "#ef4444" }}>
+                                            {!waterHasData ? "-" : waterOk ? "있음" : "없음"}
                                         </span>
                                     </div>
+                                    <style>{`
+                                        @keyframes wave1 {
+                                            0%   { transform: translateX(0)  rotate(0deg); }
+                                            50%  { transform: translateX(8%) rotate(5deg); }
+                                            100% { transform: translateX(0)  rotate(0deg); }
+                                        }
+                                        @keyframes wave2 {
+                                            0%   { transform: translateX(0)   rotate(0deg);  }
+                                            50%  { transform: translateX(-8%) rotate(-5deg); }
+                                            100% { transform: translateX(0)   rotate(0deg);  }
+                                        }
+                                    `}</style>
                                 </div>
-                                <span className="text-xs text-gray-400">WATER LEVEL</span>
-                                <span className={`text-xs font-medium ${waterOk ? "text-green-500" : "text-yellow-500"}`}>
-                                    {waterLevel !== null ? (waterOk ? "충분" : "부족") : "-"}
+                                <span className="text-xs text-gray-400">WATER</span>
+                                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full
+                                    ${!waterHasData ? "bg-gray-100 text-gray-300"
+                                      : waterOk    ? "bg-blue-100 text-blue-600"
+                                                   : "bg-red-100 text-red-500"}`}>
+                                    {!waterHasData ? "-" : waterOk ? "정상" : "부족"}
                                 </span>
                             </div>
+
+                            {/* PH */}
                             <div className="flex flex-col items-center justify-center gap-2">
-                                <div className="w-14 sm:w-16 h-14 sm:h-16 rounded-full border-4 border-green-100 flex items-center justify-center bg-green-50">
-                                    <span className="text-base sm:text-lg font-bold text-green-600">{ph ?? "-"}</span>
+                                <div className={`w-14 sm:w-16 h-14 sm:h-16 rounded-full border-4 flex items-center justify-center transition-colors
+                                    ${phOk ? "border-green-100 bg-green-50" : ph !== null ? "border-yellow-100 bg-yellow-50" : "border-gray-100 bg-gray-50"}`}>
+                                    <span className={`text-base sm:text-lg font-bold transition-colors
+                                        ${phOk ? "text-green-600" : ph !== null ? "text-yellow-600" : "text-gray-300"}`}>
+                                        {ph ?? "-"}
+                                    </span>
                                 </div>
                                 <span className="text-xs text-gray-400">PH LEVEL</span>
-                                <span className={`text-xs font-medium ${phOk ? "text-green-500" : "text-yellow-500"}`}>
+                                <span className={`text-xs font-medium ${phOk ? "text-green-500" : ph !== null ? "text-yellow-500" : "text-gray-300"}`}>
                                     {ph !== null ? (phOk ? "적정" : "조정 필요") : "-"}
                                 </span>
                             </div>
+
+                            {/* TDS */}
                             <div className="flex flex-col items-center justify-center gap-2">
-                                <div className="w-14 sm:w-16 h-14 sm:h-16 rounded-full border-4 border-purple-100 flex items-center justify-center bg-purple-50">
-                                    <span className="text-base sm:text-lg font-bold text-purple-600">{ec ?? "-"}</span>
+                                <div className={`w-14 sm:w-16 h-14 sm:h-16 rounded-full border-4 flex items-center justify-center transition-colors
+                                    ${tdsOk ? "border-purple-100 bg-purple-50" : tds !== null ? "border-yellow-100 bg-yellow-50" : "border-gray-100 bg-gray-50"}`}>
+                                    <span className={`text-base sm:text-lg font-bold transition-colors
+                                        ${tdsOk ? "text-purple-600" : tds !== null ? "text-yellow-600" : "text-gray-300"}`}>
+                                        {tds !== null ? Math.round(tds) : "-"}
+                                    </span>
                                 </div>
                                 <span className="text-xs text-gray-400">TDS (PPM)</span>
-                                <span className={`text-xs font-medium ${ecOk ? "text-green-500" : "text-yellow-500"}`}>
-                                    {ec !== null ? (ecOk ? "정상" : "확인 필요") : "-"}
+                                <span className={`text-xs font-medium ${tdsOk ? "text-green-500" : tds !== null ? "text-yellow-500" : "text-gray-300"}`}>
+                                    {tds !== null ? (tdsOk ? "정상" : "확인 필요") : "-"}
                                 </span>
                             </div>
                         </div>
@@ -357,8 +522,6 @@ function MonitoringPage() {
                                 ))}
                             </div>
                         </div>
-
-                        {/* 포트 선택 버튼 */}
                         <div className="flex gap-1 mb-3 flex-wrap">
                             {PORT_OPTIONS.map(port => {
                                 const portPlant = device.plants?.find(p => p.portIndex === port);
@@ -371,30 +534,25 @@ function MonitoringPage() {
                                                 : isPortOn && portPlant
                                                     ? "bg-green-50 text-green-600 border-green-200 hover:bg-green-100"
                                                     : "bg-gray-50 text-gray-300 border-gray-100"
-                                        }`}
-                                    >
+                                        }`}>
                                         {isPortOn && portPlant
                                             ? `${port + 1} ${SPECIES_EMOJI[portPlant.species] || "🌱"}`
-                                            : `${port + 1}`
-                                        }
+                                            : `${port + 1}`}
                                     </button>
                                 );
                             })}
                         </div>
-
                         <div className="text-xs text-gray-400 mb-2">
                             포트 {selectedPort + 1} · {selectedPlant ? selectedPlant.name : "식물 미등록"}
                             <span className={`ml-2 font-medium ${portStatus[selectedPort] === "1" ? "text-green-500" : "text-gray-300"}`}>
                                 {portStatus[selectedPort] === "1" ? "● ON" : "○ OFF"}
                             </span>
                         </div>
-
                         {selectedPlant ? (
                             <>
                                 <div className="h-32 sm:h-36 flex items-end justify-between gap-1">
                                     {visibleData.map((v, i) => (
-                                        <div key={i}
-                                            className="flex-1 bg-green-100 rounded-t-sm hover:bg-green-400 transition-colors"
+                                        <div key={i} className="flex-1 bg-green-100 rounded-t-sm hover:bg-green-400 transition-colors"
                                             style={{ height: `${v * 2}px` }} />
                                     ))}
                                 </div>
@@ -417,119 +575,91 @@ function MonitoringPage() {
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                         <h2 className="text-sm font-semibold text-gray-700 mb-4">⚙️ 시스템 제어</h2>
 
-                        {/* ✅ LED 섹션 — 수동/자동 토글 */}
+                        {/* LED 섹션 */}
                         <div className="mb-4 pb-4 border-b border-gray-50">
-                            {/* 헤더: 아이콘 + 라벨 + 수동/자동 토글 */}
                             <div className="flex items-center justify-between mb-3">
                                 <span className="text-xs font-medium text-gray-600">💡 LED 조명</span>
                                 <div className="flex items-center gap-2">
                                     <span className={`text-[10px] font-medium ${!isLedAuto ? "text-gray-700" : "text-gray-300"}`}>수동</span>
-                                    <div
-                                        onClick={() => setIsLedAuto(prev => !prev)}
-                                        className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${isLedAuto ? "bg-green-500" : "bg-gray-300"}`}
-                                    >
+                                    <div onClick={() => handleLedModeToggle(!isLedAuto)}
+                                        className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${isLedAuto ? "bg-green-500" : "bg-gray-300"}`}>
                                         <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow ${isLedAuto ? "left-5" : "left-0.5"}`} />
                                     </div>
                                     <span className={`text-[10px] font-medium ${isLedAuto ? "text-green-600" : "text-gray-300"}`}>자동</span>
                                 </div>
                             </div>
 
-                            {/* ✅ 수동 모드: ON/OFF 버튼 두 개 */}
+                            {/* 수동: ON/OFF 즉시 전송 */}
                             {!isLedAuto && (
                                 <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                        onClick={() => setIsLedOn(true)}
-                                        className={`py-2 rounded-lg text-xs font-semibold border transition-colors ${
-                                            isLedOn
-                                                ? "bg-yellow-400 border-yellow-400 text-white"
-                                                : "bg-gray-50 border-gray-200 text-gray-400 hover:border-yellow-300 hover:text-yellow-500"
-                                        }`}
-                                    >
-                                        ☀️ ON
-                                    </button>
-                                    <button
-                                        onClick={() => setIsLedOn(false)}
-                                        className={`py-2 rounded-lg text-xs font-semibold border transition-colors ${
-                                            !isLedOn
-                                                ? "bg-gray-400 border-gray-400 text-white"
-                                                : "bg-gray-50 border-gray-200 text-gray-400 hover:border-gray-400 hover:text-gray-600"
-                                        }`}
-                                    >
-                                        🌙 OFF
-                                    </button>
+                                    <button onClick={() => handleLedManual(true)} disabled={ledSaving}
+                                        className={`py-2 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-50 ${
+                                            isLedOn ? "bg-yellow-400 border-yellow-400 text-white"
+                                                    : "bg-gray-50 border-gray-200 text-gray-400 hover:border-yellow-300 hover:text-yellow-500"
+                                        }`}>☀️ ON</button>
+                                    <button onClick={() => handleLedManual(false)} disabled={ledSaving}
+                                        className={`py-2 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-50 ${
+                                            !isLedOn ? "bg-gray-400 border-gray-400 text-white"
+                                                     : "bg-gray-50 border-gray-200 text-gray-400 hover:border-gray-400 hover:text-gray-600"
+                                        }`}>🌙 OFF</button>
                                 </div>
                             )}
 
-                            {/* ✅ 자동 모드: 시작/종료 시간 입력 */}
+                            {/* 자동: 시간 설정 후 저장 */}
                             {isLedAuto && (
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                        <label className="text-xs text-gray-400">시작 시간</label>
-                                        <input
-                                            type="time"
-                                            value={ledStart}
-                                            onChange={e => setLedStart(e.target.value)}
-                                            className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1"
-                                        />
+                                <div className="flex flex-col gap-2">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="text-xs text-gray-400">시작 시간</label>
+                                            <input type="time" value={ledStart} onChange={e => setLedStart(e.target.value)}
+                                                className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1" />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-400">종료 시간</label>
+                                            <input type="time" value={ledEnd} onChange={e => setLedEnd(e.target.value)}
+                                                className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1" />
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label className="text-xs text-gray-400">종료 시간</label>
-                                        <input
-                                            type="time"
-                                            value={ledEnd}
-                                            onChange={e => setLedEnd(e.target.value)}
-                                            className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1"
-                                        />
-                                    </div>
+                                    <button onClick={handleLedScheduleSave} disabled={ledSaving}
+                                        className="w-full bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white text-xs font-semibold py-2 rounded-lg transition-colors">
+                                        {ledSaving ? "저장 중..." : "스케줄 적용"}
+                                    </button>
                                 </div>
                             )}
                         </div>
 
-                        {/* 자동 촬영 */}
-                        <div className={`mb-4 rounded-xl p-3 transition-colors ${autoCapture ? "bg-green-50 border border-green-100" : "bg-gray-50"}`}>
+                        {/* 촬영 주기 */}
+                        <div className="mb-4 pb-4 border-b border-gray-50">
                             <div className="flex items-center justify-between mb-3">
-                                <span className={`text-xs font-medium ${autoCapture ? "text-green-700" : "text-gray-600"}`}>
-                                    💧 자동 촬영 스케줄
-                                </span>
+                                <span className="text-xs font-medium text-gray-600">📷 촬영 주기</span>
                             </div>
-                            <div className="flex items-center justify-between mb-3">
-                                <span className="text-xs font-medium text-gray-700">자동 촬영</span>
-                                <div onClick={() => setAutoCapture(prev => !prev)}
-                                    className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${autoCapture ? "bg-green-500" : "bg-gray-200"}`}>
-                                    <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow ${autoCapture ? "left-5" : "left-0.5"}`} />
-                                </div>
+                            <div className="flex flex-col gap-2">
+                                <select value={captureInterval} onChange={e => setCaptureInterval(Number(e.target.value))}
+                                    className="w-full border border-gray-100 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-400">
+                                    <option value={1}>1시간</option>
+                                    <option value={3}>3시간</option>
+                                    <option value={6}>6시간</option>
+                                    <option value={12}>12시간</option>
+                                    <option value={24}>24시간</option>
+                                </select>
+                                <button onClick={handleCaptureSave} disabled={captureSaving}
+                                    className="w-full bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white text-xs font-semibold py-2 rounded-lg transition-colors">
+                                    {captureSaving ? "저장 중..." : "주기 적용"}
+                                </button>
                             </div>
-                            <div className="grid grid-cols-2 gap-2 mb-3">
-                                <div>
-                                    <label className="text-xs text-gray-400">시작</label>
-                                    <input type="time" value={captureStart} onChange={e => setCaptureStart(e.target.value)}
-                                        className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1" />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-gray-400">간격</label>
-                                    <select value={captureInterval} onChange={e => setCaptureInterval(e.target.value)}
-                                        className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1">
-                                        <option>3시간</option>
-                                        <option>6시간</option>
-                                        <option>12시간</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <p className="text-xs text-gray-400 leading-relaxed">
-                                동작 방식: 설정된 시간마다 타워가 360° 회전하면서 카메라가 Z축을 따라 상하로 이동하여 전체 식물을 촬영합니다.
+                            <p className="text-xs text-gray-400 leading-relaxed mt-2">
+                                설정된 주기마다 타워가 360° 회전하면서 전체 식물을 촬영합니다.
                             </p>
                         </div>
 
                         {saveMessage && (
-                            <div className="text-xs text-green-600 text-center mb-2 font-medium">{saveMessage}</div>
+                            <div className={`text-xs text-center mb-2 font-medium ${saveMessage.startsWith("⚠") ? "text-yellow-500" : "text-green-600"}`}>
+                                {saveMessage}
+                            </div>
                         )}
                         <button onClick={handleResetSettings}
-                            className="w-full border border-gray-200 text-gray-500 hover:bg-gray-50 text-sm py-2.5 rounded-xl transition-colors mb-2">
+                            className="w-full border border-gray-200 text-gray-500 hover:bg-gray-50 text-sm py-2.5 rounded-xl transition-colors">
                             설정 초기화
-                        </button>
-                        <button onClick={handleSaveSettings}
-                            className="w-full bg-green-600 hover:bg-green-700 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
-                            전체 설정 저장
                         </button>
                     </div>
 
@@ -547,6 +677,7 @@ function MonitoringPage() {
                         </div>
                     </div>
                 </div>
+
             </div>
         </div>
     );
