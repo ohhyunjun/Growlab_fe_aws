@@ -117,8 +117,9 @@ function MonitoringPage() {
                 }
 
                 const noticeRes = await getAllNoticesApi();
-                setNotices(noticeRes.data);
-                sessionStorage.setItem(getNoticeKey(serialNumber), JSON.stringify(noticeRes.data));
+                const filtered = noticeRes.data.filter(n => n.deviceSerial === serialNumber);
+                setNotices(filtered);
+                sessionStorage.setItem(getNoticeKey(serialNumber), JSON.stringify(filtered));
             } catch (e) { console.error(e); }
             finally { setLoading(false); }
         };
@@ -173,9 +174,10 @@ function MonitoringPage() {
         const pollNotices = async () => {
             try {
                 const res = await getAllNoticesApi();
+                const filtered = res.data.filter(n => n.deviceSerial === serialNumber);
                 setNotices(prev => {
                     const existingIds = new Set(prev.map(n => n.id));
-                    const newOnes = res.data.filter(n => !existingIds.has(n.id));
+                    const newOnes = filtered.filter(n => !existingIds.has(n.id));
                     if (newOnes.length === 0) return prev;
                     const merged = [...newOnes, ...prev];
                     sessionStorage.setItem(getNoticeKey(serialNumber), JSON.stringify(merged));

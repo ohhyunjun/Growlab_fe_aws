@@ -266,11 +266,25 @@ function HomePage() {
     };
 
     const handleDelete = async (serialNumber) => {
+        const device = devices.find(d => d.serialNumber === serialNumber);
+        const hasPlants = device?.plants?.length > 0;
+
+        if (hasPlants) {
+            alert("기기에 등록된 식물이 있어요.\n각 포트를 OFF하여 식물을 먼저 해제한 후 삭제해주세요.");
+            return;
+        }
+
         if (!window.confirm("기기를 삭제할까요?")) return;
         try {
             await deleteDeviceApi(serialNumber);
+            // localStorage 기기 관련 데이터 제거
+            localStorage.removeItem(`device_species_${serialNumber}`);
+            localStorage.removeItem(`device_icon_${serialNumber}`);
             setDevices(prev => prev.filter(d => d.serialNumber !== serialNumber));
-        } catch (err) { console.error(err); }
+        } catch (err) {
+            console.error(err);
+            alert("기기 삭제에 실패했습니다.");
+        }
     };
 
     const handlePortClick = async (device, portIndex, isCurrentlyOn) => {
