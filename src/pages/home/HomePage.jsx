@@ -208,6 +208,9 @@ function HomePage() {
         try {
             await deleteDeviceApi(serialNumber);
             setDevices(prev => prev.filter(d => d.serialNumber !== serialNumber));
+            localStorage.removeItem(`device_species_${serialNumber}`);
+            localStorage.removeItem(`device_icon_${serialNumber}`);
+            localStorage.removeItem(`device_settings_${serialNumber}`);
         } catch (err) { console.error(err); }
     };
 
