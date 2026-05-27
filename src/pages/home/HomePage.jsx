@@ -277,9 +277,9 @@ function HomePage() {
         if (!window.confirm("기기를 삭제할까요?")) return;
         try {
             await deleteDeviceApi(serialNumber);
-            // localStorage 기기 관련 데이터 제거
             localStorage.removeItem(`device_species_${serialNumber}`);
             localStorage.removeItem(`device_icon_${serialNumber}`);
+            localStorage.removeItem(`device_settings_${serialNumber}`);
             setDevices(prev => prev.filter(d => d.serialNumber !== serialNumber));
         } catch (err) {
             console.error(err);

@@ -18,6 +18,39 @@ const STAGE_LABEL = { SEED: "씨앗", GERMINATION: "발아", MATURE: "성숙" };
 const getSensorKey = (serial) => `growlab_sensor_${serial}`;
 const getNoticeKey = (serial) => `growlab_notices_${serial}`;
 
+const fetchAiAdvice = async (deviceData, plantData) => {
+    try {
+        const token = localStorage.getItem("token");
+        const daysSincePlanted = plantData?.plantedAt
+            ? Math.floor((new Date() - new Date(plantData.plantedAt)) / (1000 * 60 * 60 * 24))
+            : null;
+
+        const response = await fetch("http://localhost:8080/api/ai/advice", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                serialNumber: deviceData.serialNumber,
+                speciesName: plantData?.species || null,
+                temperature: deviceData.temperature,
+                humidity: deviceData.humidity,
+                ph: deviceData.ph,
+                ec: deviceData.ec,
+                waterLevel: deviceData.waterLevel,
+                daysSincePlanted: daysSincePlanted,
+                plantStage: plantData?.plantStage || null,
+            })
+        });
+        const data = await response.json();
+        return data.advice;
+    } catch (err) {
+        console.error("AI 조언 불러오기 실패:", err);
+        return null;
+    }
+};
+
 function MonitoringPage() {
     const { serialNumber } = useParams();
     const navigate = useNavigate();
@@ -56,6 +89,8 @@ function MonitoringPage() {
     // ── UI 상태
     const [range, setRange] = useState(14);
     const [selectedPort, setSelectedPort] = useState(0);
+    const [aiAdvice, setAiAdvice] = useState(null);
+    const [aiLoading, setAiLoading] = useState(false);
     const RANGE_OPTIONS = [7, 14, 30, 60];
     const PORT_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7];
 
@@ -114,6 +149,13 @@ function MonitoringPage() {
                             setSelectedPort(firstPlant.portIndex);
                         }
                     }
+
+                    // AI 조언 호출
+                    setAiLoading(true);
+                    const representativePlant = found.plants?.find(p => p.species) ?? null;
+                    const advice = await fetchAiAdvice(found, representativePlant);
+                    setAiAdvice(advice);
+                    setAiLoading(false);
                 }
 
                 const noticeRes = await getAllNoticesApi();
@@ -286,7 +328,7 @@ function MonitoringPage() {
 
             <div className="p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 max-w-screen-xl mx-auto lg:items-start">
 
-                {/* ───── 좌측 사이드바 ───── */}
+                {/* 좌측 사이드바 */}
                 <div className="lg:col-span-3 flex flex-col gap-3">
 
                     {/* 식물 정보 */}
@@ -386,7 +428,7 @@ function MonitoringPage() {
                     </div>
                 </div>
 
-                {/* ───── 중앙 콘텐츠 ───── */}
+                {/* 중앙 콘텐츠 */}
                 <div className="lg:col-span-6 flex flex-col gap-4">
 
                     {/* 온도/습도 */}
@@ -572,7 +614,7 @@ function MonitoringPage() {
                     </div>
                 </div>
 
-                {/* ───── 우측 제어판 ───── */}
+                {/* 우측 제어판 */}
                 <div className="lg:col-span-3 flex flex-col gap-3">
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                         <h2 className="text-sm font-semibold text-gray-700 mb-4">⚙️ 시스템 제어</h2>
@@ -667,16 +709,37 @@ function MonitoringPage() {
 
                     {/* AI 조언 */}
                     <div className="bg-green-50 rounded-2xl border border-green-100 p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                            <span className="text-sm">🤖</span>
-                            <h2 className="text-sm font-semibold text-green-700">AI 재배 조언</h2>
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm">🤖</span>
+                                <h2 className="text-sm font-semibold text-green-700">AI 재배 조언</h2>
+                            </div>
+                            <button
+                                onClick={async () => {
+                                    setAiLoading(true);
+                                    const advice = await fetchAiAdvice(device, selectedPlant);
+                                    setAiAdvice(advice);
+                                    setAiLoading(false);
+                                }}
+                                className="text-xs text-green-600 hover:text-green-800 underline"
+                            >
+                                새로고침
+                            </button>
                         </div>
-                        <div className="flex flex-col gap-2 text-xs text-green-800 leading-relaxed">
-                            <p><span className="font-semibold">환경 전반:</span> 현재 온도와 습도가 생육에 이상적인 환경입니다.</p>
-                            <p><span className="font-semibold">조명 관리:</span> 충분한 광량으로 당도를 높여요.</p>
-                            <p><span className="font-semibold">양액 시스템:</span> 현재 설정이 정상 동작 중입니다.</p>
-                            <p className="text-green-600">🌟 <span className="font-semibold">성장 속도:</span> 동종 대비 +12% 빠른 성장세를 보이고 있어요.</p>
-                        </div>
+
+                        {aiLoading ? (
+                            <div className="flex items-center justify-center py-6 text-green-600 text-xs gap-2">
+                                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                                </svg>
+                                AI가 분석 중이에요...
+                            </div>
+                        ) : aiAdvice ? (
+                            <p className="text-xs text-green-800 leading-relaxed whitespace-pre-wrap">{aiAdvice}</p>
+                        ) : (
+                            <p className="text-xs text-gray-400 text-center py-4">조언을 불러올 수 없어요</p>
+                        )}
                     </div>
                 </div>
 
