@@ -950,7 +950,9 @@ function MonitoringPage() {
                                 AI가 분석 중이에요...
                             </div>
                         ) : aiAdvice ? (
-                            <p className="text-xs text-green-800 leading-relaxed whitespace-pre-wrap">{aiAdvice}</p>
+                            <div className="max-h-40 overflow-y-auto pr-1">
+                                <p className="text-xs text-green-800 leading-relaxed whitespace-pre-wrap">{aiAdvice}</p>
+                            </div>
                         ) : (
                             <p className="text-xs text-gray-400 text-center py-4">조언을 불러올 수 없어요</p>
                         )}
