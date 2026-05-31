@@ -1,30 +1,32 @@
+// marketpriceApi.js
 import axios from "axios";
 
 const API_BASE = "http://localhost:8080/api/prices";
 
-// 로컬 스토리지에서 토큰을 읽어와 인증 헤더를 만드는 헬퍼 함수
 const authHeader = () => ({
     headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
 });
 
 /**
- * 특정 품목의 최신 도소매 시세를 조회합니다.
- * @param {string} itemName - 품목명 (예: "적상추")
+ * 최신 가격 조회 (도매 or 소매 1건)
+ * @param {string} itemCode
+ * @param {string} kindCode
  */
-export const getLatestPrice = (itemName) => {
+export const getLatestPrice = (itemCode, kindCode) => {
     return axios.get(`${API_BASE}/latest`, {
-        params: { itemName },
-        ...authHeader()
+        params: { itemCode, kindCode },
+        ...authHeader(),
     });
 };
 
 /**
- * 특정 품목의 최근 7일간의 주간 시세 추이를 조회합니다.
- * @param {string} itemName - 품목명 (예: "적상추")
+ * 최근 7일 가격 조회
+ * @param {string} itemCode
+ * @param {string} kindCode
  */
-export const getWeeklyPrice = (itemName) => {
+export const getWeeklyPrice = (itemCode, kindCode) => {
     return axios.get(`${API_BASE}/weekly`, {
-        params: { itemName },
-        ...authHeader()
+        params: { itemCode, kindCode },
+        ...authHeader(),
     });
 };
