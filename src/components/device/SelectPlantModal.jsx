@@ -2,21 +2,26 @@ import { useState, useEffect } from "react";
 import { getAllSpeciesApi } from "../../api/speciesApi";
 import { createPlantApi } from "../../api/plantApi";
 
-const CATEGORY_FILTERS = ["전체", "채소", "허브", "과일", "관상식물"];
+const CATEGORY_FILTERS = ["전체", "채소", "과일"];
 
 const CATEGORY_MAP = {
     "채소": "VEGETABLE",
-    "과일": "FRUIT",
-    "허브": "HERB",
-    "관상식물": "ORNAMENTAL",
+    "과일": "FRUIT"
 };
 
 const SPECIES_EMOJI = {
-    "방울토마토": "🍅", "청상추": "🥬", "적상추": "🥬",
-    "바질": "🌿", "딸기": "🍓", "파프리카": "🌶️",
-    "브로콜리": "🥦", "고추": "🌶️", "블루베리": "🫐",
-    "페퍼민트": "🌿", "청경채": "🥬", "테이블야자": "🌴",
-    "산세베리아 스투키": "🪴",
+    "방울토마토": "🍅", 
+    "청상추":    "🥬", 
+    "적상추":    "🥬",
+    "딸기":      "🍓", 
+    "파프리카":  "🌶️",
+    "풋고추":    "🌶️", 
+    "블루베리":  "🫐",
+    "시금치":    "🥬", 
+    "토마토":    "🍅", 
+    "오이":      "🥒", 
+    "피망":      "🫑", 
+    "깻잎":      "🍃"
 };
 
 const DIFFICULTY_LABEL = { EASY: "쉬움", NORMAL: "보통", HARD: "어려움" };
