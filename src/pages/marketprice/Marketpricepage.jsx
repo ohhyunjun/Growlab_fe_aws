@@ -10,17 +10,18 @@ import { getLatestPrice, getWeeklyPrice } from "../../api/marketpriceApi";
  * 아래 코드/품종코드는 실제 DB에 들어있는 값으로 교체하세요.
  */
 const ITEMS = [
-    { name: "방울토마토", emoji: "🍅", itemCode: "422", kindCode: "00" },
-    { name: "청상추",    emoji: "🥬", itemCode: "214", kindCode: "01" },
-    { name: "적상추",    emoji: "🥬", itemCode: "214", kindCode: "02" },
-    { name: "바질",     emoji: "🌿", itemCode: "246", kindCode: "00" },
+    { name: "방울토마토", emoji: "🍅", itemCode: "422", kindCode: "01" },
+    { name: "청상추",    emoji: "🥬", itemCode: "214", kindCode: "02" },
+    { name: "적상추",    emoji: "🥬", itemCode: "214", kindCode: "01" },
     { name: "딸기",     emoji: "🍓", itemCode: "226", kindCode: "00" },
-    { name: "파프리카", emoji: "🌶️", itemCode: "246", kindCode: "02" },
-    { name: "브로콜리", emoji: "🥦", itemCode: "252", kindCode: "00" },
-    { name: "고추",     emoji: "🌶️", itemCode: "225", kindCode: "00" },
-    { name: "블루베리", emoji: "🫐", itemCode: "245", kindCode: "00" },
-    { name: "페퍼민트", emoji: "🌿", itemCode: "246", kindCode: "00" },
-    { name: "청경채",   emoji: "🥬", itemCode: "253", kindCode: "00" },
+    { name: "파프리카", emoji: "🌶️", itemCode: "256", kindCode: "00" },
+    { name: "풋고추",     emoji: "🌶️", itemCode: "242", kindCode: "04" },
+    { name: "블루베리", emoji: "🫐", itemCode: "429", kindCode: "01" },
+    { name: "시금치",    emoji: "🥬", itemCode: "213", kindCode: "00" },
+    { name: "토마토",    emoji: "🍅", itemCode: "225", kindCode: "00" }, 
+    { name: "오이", emoji: "🥒", itemCode: "223", kindCode: "01" }, 
+    { name: "피망",     emoji: "🫑", itemCode: "255", kindCode: "00" }, 
+    { name: "깻잎",     emoji: "🍃", itemCode: "253", kindCode: "00" }    
 ];
 
 // 전일 대비 변동 계산
