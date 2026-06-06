@@ -16,11 +16,6 @@ const SPECIES_EMOJI = {
     "산세베리아 스투키": "🪴",
 };
 
-const formatValue = (value, unit) => {
-    if (value === null || value === undefined) return "-";
-    return `${value}${unit}`;
-};
-
 const SORT_OPTIONS = [
     { key: "name", label: "이름순" },
     { key: "newest", label: "최신순" },
@@ -40,6 +35,19 @@ const setDeviceSpecies = (serialNumber, speciesData) => {
     localStorage.setItem(`device_species_${serialNumber}`, JSON.stringify(speciesData));
 };
 
+// ✅ sessionStorage에서 실시간 센서값 읽기 (MonitoringPage SSE가 저장한 값)
+const getSensorData = (serialNumber) => {
+    try {
+        const saved = sessionStorage.getItem(`growlab_sensor_${serialNumber}`);
+        return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+};
+
+const formatSensor = (value, unit) => {
+    if (value === null || value === undefined) return "-";
+    return `${value}${unit}`;
+};
+
 function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMonitoring }) {
     const savedIconIndex = localStorage.getItem(`device_icon_${device.serialNumber}`);
     const emoji = (savedIconIndex !== null && savedIconIndex !== undefined)
@@ -53,6 +61,22 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
     const speciesName = deviceSpecies?.speciesName || null;
     const speciesEmoji = speciesName ? (SPECIES_EMOJI[speciesName] || "🌱") : null;
 
+    // ✅ sessionStorage에서 실시간 센서값 읽기 (30초마다 갱신)
+    const [sensor, setSensor] = useState(() => getSensorData(device.serialNumber));
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setSensor(getSensorData(device.serialNumber));
+        }, 30000);
+        return () => clearInterval(timer);
+    }, [device.serialNumber]);
+
+    const temp      = sensor?.temperature        ?? null;
+    const humidity  = sensor?.humidity           ?? null;
+    const ph        = sensor?.ph                 ?? null;
+    const tds       = sensor?.tds                ?? null;
+    const waterOk   = sensor?.water_level_status ?? null; // boolean or null
+
     return (
         <div
             onClick={() => onOpenMonitoring(device.serialNumber, null)}
@@ -64,7 +88,6 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
             >✕</button>
 
             <div className="flex items-center gap-3 mb-4">
-                {/* ✅ 기기 아이콘은 항상 고정 (품종 변경해도 유지) */}
                 <span className="text-3xl">{emoji}</span>
                 <div>
                     <div className="font-semibold text-gray-800 text-sm">{device.deviceNickname}</div>
@@ -78,7 +101,6 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    // ✅ ON 상태인 포트가 하나라도 있으면 변경 차단
                                     const hasActivePort = portStatus.includes("1");
                                     if (hasActivePort) {
                                         alert("포트가 켜져 있는 동안은 품종을 변경할 수 없어요.\n모든 포트를 OFF한 후 변경해주세요.");
@@ -90,12 +112,8 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
                             >변경</button>
                         </div>
                     ) : (
-                        // ✅ 품종 미등록 → 품종 선택 유도
                         <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectSpecies(device.serialNumber);
-                            }}
+                            onClick={(e) => { e.stopPropagation(); onSelectSpecies(device.serialNumber); }}
                             className="flex items-center gap-1 mt-0.5 text-[11px] text-yellow-600 animate-pulse"
                         >
                             <span>⚠️ 식물 미등록</span>
@@ -109,16 +127,12 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
             <div className="grid grid-cols-4 gap-2 p-2 bg-gray-50 rounded-lg border border-gray-100 mb-4">
                 {[...Array(8)].map((_, index) => {
                     const isOn = portStatus[index] === "1";
-
                     return (
                         <div
                             key={index}
                             onClick={(e) => {
                                 e.stopPropagation();
-                                if (!speciesName) {
-                                    alert("먼저 품종을 선택해주세요.");
-                                    return;
-                                }
+                                if (!speciesName) { alert("먼저 품종을 선택해주세요."); return; }
                                 onPortClick(device, index, isOn);
                             }}
                             className={`flex flex-col items-center justify-center h-14 rounded-md transition-all border cursor-pointer select-none ${
@@ -142,18 +156,65 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
                 })}
             </div>
 
+            {/* ✅ 센서 수치 — 정상범위 이탈 시 색상 표시 */}
             <div className="grid grid-cols-3 gap-2 text-center">
-                {[
-                    { label: "온도", value: formatValue(device.temperature, "°C") },
-                    { label: "습도", value: formatValue(device.humidity, "%") },
-                    { label: "pH", value: formatValue(device.ph, "") },
-                    { label: "EC", value: formatValue(device.ec, "") },
-                    { label: "수위", value: formatValue(device.waterLevel, "") },
-                    { label: "조명", value: device.status ? "ON" : "OFF" },
-                ].map(({ label, value }) => (
-                    <div key={label} className="bg-gray-50 rounded-lg py-2">
+                {(() => {
+                    const tempOk  = temp     !== null && temp     >= 18  && temp     <= 28;
+                    const humidOk = humidity !== null && humidity >= 50  && humidity <= 80;
+                    const phOk    = ph       !== null && ph       >= 5.5 && ph       <= 7.0;
+                    const tdsOk   = tds      !== null && tds      >= 200 && tds      <= 800;
+
+                    const getColor = (hasData, isOk) => {
+                        if (!hasData) return "text-gray-300";
+                        return isOk ? "text-green-500" : "text-orange-400";
+                    };
+                    const getBg = (hasData, isOk) => {
+                        if (!hasData) return "bg-gray-50";
+                        return isOk ? "bg-green-50" : "bg-orange-50";
+                    };
+
+                    return [
+                        {
+                            label: "온도",
+                            value: formatSensor(temp, "°C"),
+                            color: getColor(temp !== null, tempOk),
+                            bg: getBg(temp !== null, tempOk),
+                        },
+                        {
+                            label: "습도",
+                            value: formatSensor(humidity, "%"),
+                            color: getColor(humidity !== null, humidOk),
+                            bg: getBg(humidity !== null, humidOk),
+                        },
+                        {
+                            label: "pH",
+                            value: formatSensor(ph, ""),
+                            color: getColor(ph !== null, phOk),
+                            bg: getBg(ph !== null, phOk),
+                        },
+                        {
+                            label: "TDS",
+                            value: tds !== null ? `${Math.round(tds)}ppm` : "-",
+                            color: getColor(tds !== null, tdsOk),
+                            bg: getBg(tds !== null, tdsOk),
+                        },
+                        {
+                            label: "수위",
+                            value: waterOk === null ? "-" : waterOk ? "정상" : "부족",
+                            color: waterOk === null ? "text-gray-300" : waterOk ? "text-blue-500" : "text-red-400",
+                            bg: waterOk === null ? "bg-gray-50" : waterOk ? "bg-blue-50" : "bg-red-50",
+                        },
+                        {
+                            label: "LED",
+                            value: device.ledStatus ? "ON" : "OFF",
+                            color: device.ledStatus ? "text-yellow-500" : "text-gray-400",
+                            bg: "bg-gray-50",
+                        },
+                    ];
+                })().map(({ label, value, color, bg }) => (
+                    <div key={label} className={`${bg} rounded-lg py-2`}>
                         <div className="text-xs text-gray-400">{label}</div>
-                        <div className="text-sm font-semibold text-gray-700">{value}</div>
+                        <div className={`text-sm font-semibold ${color}`}>{value}</div>
                     </div>
                 ))}
             </div>
@@ -166,8 +227,6 @@ function HomePage() {
     const [unreadCount, setUnreadCount] = useState(0);
     const [showAddModal, setShowAddModal] = useState(false);
     const [sortKey, setSortKey] = useState("name");
-
-    // ✅ 품종 선택 모달용 상태 (portIndex 없이 serialNumber만)
     const [selectingSpeciesSerial, setSelectingSpeciesSerial] = useState(null);
 
     const navigate = useNavigate();
@@ -196,37 +255,49 @@ function HomePage() {
         return copy;
     };
 
-    const getAverage = (devices, key) => {
-        if (!devices || devices.length === 0) return "-";
-        const values = devices.map(d => d[key]).filter(v => v !== null && v !== undefined);
+    // ✅ 전체 환경 요약 — sessionStorage 실시간값 기준으로 평균
+    const getAverage = (deviceList, key) => {
+        if (!deviceList || deviceList.length === 0) return "-";
+        const values = deviceList
+            .map(d => getSensorData(d.serialNumber)?.[key])
+            .filter(v => v !== null && v !== undefined);
         if (values.length === 0) return "-";
         return (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1);
     };
 
     const handleDelete = async (serialNumber) => {
+        const device = devices.find(d => d.serialNumber === serialNumber);
+        const hasPlants = device?.plants?.length > 0;
+
+        if (hasPlants) {
+            alert("기기에 등록된 식물이 있어요.\n각 포트를 OFF하여 식물을 먼저 해제한 후 삭제해주세요.");
+            return;
+        }
+
         if (!window.confirm("기기를 삭제할까요?")) return;
         try {
             await deleteDeviceApi(serialNumber);
-            setDevices(prev => prev.filter(d => d.serialNumber !== serialNumber));
             localStorage.removeItem(`device_species_${serialNumber}`);
             localStorage.removeItem(`device_icon_${serialNumber}`);
             localStorage.removeItem(`device_settings_${serialNumber}`);
-        } catch (err) { console.error(err); }
+            setDevices(prev => prev.filter(d => d.serialNumber !== serialNumber));
+        } catch (err) {
+            console.error(err);
+            alert("기기 삭제에 실패했습니다.");
+        }
     };
 
-    // ✅ 포트 ON → 대표 품종으로 해당 포트에 식물 자동 등록 + 포트 ON
-    // ✅ 포트 OFF → 해당 포트 식물 삭제 + 포트 OFF
     const handlePortClick = async (device, portIndex, isCurrentlyOn) => {
         const deviceSpecies = getDeviceSpecies(device.serialNumber);
 
         if (isCurrentlyOn) {
-            // ON → OFF
             const portPlant = device.plants?.find(p => p.portIndex === portIndex);
             if (portPlant) {
                 if (!window.confirm(`P${portIndex + 1} 포트를 OFF하면 식물이 삭제됩니다. 계속할까요?`)) return;
                 try {
                     await deletePlantApi(portPlant.id);
                 } catch (err) {
+                    console.error(err);
                     alert("식물 삭제에 실패했습니다.");
                     return;
                 }
@@ -235,16 +306,12 @@ function HomePage() {
                 await updatePortStatusApi(device.serialNumber, portIndex, false);
                 await fetchDevices();
             } catch (err) {
+                console.error(err);
                 alert("포트 제어에 실패했습니다.");
             }
         } else {
-            // OFF → ON: 대표 품종으로 해당 포트에 식물 자동 등록
-            if (!deviceSpecies) {
-                alert("먼저 품종을 선택해주세요.");
-                return;
-            }
+            if (!deviceSpecies) { alert("먼저 품종을 선택해주세요."); return; }
             try {
-                // ✅ 포트에 식물 자동 등록 (품종명을 이름으로, speciesId 사용)
                 await createPlantApi({
                     name: deviceSpecies.speciesName,
                     speciesId: deviceSpecies.speciesId,
@@ -256,17 +323,15 @@ function HomePage() {
                 await updatePortStatusApi(device.serialNumber, portIndex, true);
                 await fetchDevices();
             } catch (err) {
-                console.error("식물 등록 실패:", err);
+                console.error(err);
                 alert("식물 등록에 실패했습니다. 이미 등록된 포트일 수 있어요.");
             }
         }
     };
 
-    // ✅ 품종 선택 모달에서 완료 시 → localStorage 저장만, 포트 ON/OFF는 건드리지 않음
     const handleSpeciesSelected = (serialNumber, speciesId, speciesName) => {
         setDeviceSpecies(serialNumber, { speciesId, speciesName });
         setSelectingSpeciesSerial(null);
-        // 화면 리렌더링을 위해 devices 재조회
         fetchDevices();
     };
 
@@ -276,14 +341,14 @@ function HomePage() {
         });
     };
 
-    const avgTemp = getAverage(devices, "temperature");
+    const avgTemp     = getAverage(devices, "temperature");
     const avgHumidity = getAverage(devices, "humidity");
 
     const summaryItems = [
-        { icon: "🌡", label: "평균 온도", value: avgTemp === "-" ? "-" : `${avgTemp}°C`, color: "text-green-600" },
-        { icon: "💧", label: "평균 습도", value: avgHumidity === "-" ? "-" : `${avgHumidity}%`, color: "text-green-600" },
-        { icon: "⚡", label: "활성 기기", value: `${devices.length}대`, color: "text-green-600" },
-        { icon: "🔔", label: "미확인 알림", value: `${unreadCount}건`, color: "text-green-600", onClick: () => navigate("/notifications") },
+        { icon: "🌡", label: "평균 온도",   value: avgTemp     === "-" ? "-" : `${avgTemp}°C`,    color: "text-green-600" },
+        { icon: "💧", label: "평균 습도",   value: avgHumidity === "-" ? "-" : `${avgHumidity}%`, color: "text-green-600" },
+        { icon: "⚡", label: "활성 기기",   value: `${devices.length}대`,                         color: "text-green-600" },
+        { icon: "🔔", label: "미확인 알림", value: `${unreadCount}건`,                            color: "text-green-600", onClick: () => navigate("/notifications") },
     ];
 
     const sortedDevices = getSortedDevices();
@@ -384,7 +449,6 @@ function HomePage() {
                 />
             )}
 
-            {/* ✅ 품종 선택 모달 — portIndex 없이 기기 단위로만 */}
             {selectingSpeciesSerial && (
                 <SelectPlantModal
                     serialNumber={selectingSpeciesSerial}

@@ -19,3 +19,9 @@ export const updatePortStatusApi = (serialNumber, portIndex, status) => {
         authHeader()
     );
 };
+
+export const updateLedApi = (serialNumber, payload) =>
+    axios.patch(`${API_BASE}/${serialNumber}/led`, payload, authHeader());
+ 
+export const updatePhotoIntervalApi = (serialNumber, photoInterval) =>
+    axios.patch(`${API_BASE}/${serialNumber}/photo_interval`, { photoInterval }, authHeader());
