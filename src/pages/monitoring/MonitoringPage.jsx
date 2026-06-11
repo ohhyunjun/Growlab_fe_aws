@@ -24,7 +24,7 @@ const addHours = (date, h) => new Date(date.getTime() + h * 3600 * 1000);
 const addDays  = (date, d) => new Date(date.getTime() + d * 86400 * 1000);
 const fmtDate  = (date)    => `${date.getMonth() + 1}/${date.getDate()}`;
 
-// ── AI 조언 + 분석 동시 요청 ──────────────────────────────────
+// ── AI 조언 API 호출 ──────────────────────────────────────────
 const fetchAiData = async (deviceData, plantData) => {
     try {
         const token = localStorage.getItem("token");
@@ -57,7 +57,6 @@ const fetchAiData = async (deviceData, plantData) => {
 const parseAiAnalysis = (adviceText) => {
     if (!adviceText) return null;
 
-    // 텍스트에서 각 섹션 추출
     const sections = {
         environment: null,
         lighting: null,
@@ -83,7 +82,6 @@ const parseAiAnalysis = (adviceText) => {
             currentSection = 'growth';
             sectionBuf[currentSection] = [];
         } else if (currentSection) {
-            // 콜론 뒤 내용만 가져오기 (예: "환경 전반: 현재...")
             const colonIdx = line.indexOf(':');
             const content = colonIdx !== -1 && colonIdx < 10 ? line.slice(colonIdx + 1).trim() : line;
             if (content) sectionBuf[currentSection].push(content);
@@ -95,7 +93,6 @@ const parseAiAnalysis = (adviceText) => {
     sections.nutrients   = sectionBuf['nutrients']?.join(' ')   || null;
     sections.growth      = sectionBuf['growth']?.join(' ')      || null;
 
-    // 파싱 실패 시 전체 텍스트에서 키워드로 추출 시도
     if (!sections.environment && !sections.lighting) {
         const envMatch = adviceText.match(/환경 전반[：:]\s*(.+?)(?=조명|양액|성장|$)/s);
         const lightMatch = adviceText.match(/조명 관리[：:]\s*(.+?)(?=환경|양액|성장|$)/s);
@@ -469,7 +466,10 @@ function MonitoringPage() {
     const [prediction, setPrediction] = useState(null);
     const [aiAdvice, setAiAdvice] = useState(null);
     const [aiAnalysis, setAiAnalysis] = useState(null);
-    const [aiLoading, setAiLoading] = useState(false);
+
+    // ── 분리된 로딩 상태 ───────────────────────────────────────
+    const [visionAiLoading, setVisionAiLoading] = useState(false);
+    const [adviceAiLoading, setAdviceAiLoading] = useState(false);
 
     const PORT_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7];
 
@@ -491,14 +491,22 @@ function MonitoringPage() {
     const [ledSaving, setLedSaving] = useState(false);
     const [captureSaving, setCaptureSaving] = useState(false);
 
-    // ── AI 새로고침 핸들러 ──────────────────────────────────────
-    const handleRefreshAi = useCallback(async (deviceData, plantData) => {
+    // ── Vision AI 분석만 새로고침 (점수 + 분석 섹션) ─────────────
+    const handleRefreshVision = useCallback(async (deviceData, plantData) => {
         if (!deviceData) return;
-        setAiLoading(true);
+        setVisionAiLoading(true);
+        const advice = await fetchAiData(deviceData, plantData);
+        setAiAnalysis(parseAiAnalysis(advice));
+        setVisionAiLoading(false);
+    }, []);
+
+    // ── AI 재배 조언만 새로고침 (조언 텍스트) ────────────────────
+    const handleRefreshAdvice = useCallback(async (deviceData, plantData) => {
+        if (!deviceData) return;
+        setAdviceAiLoading(true);
         const advice = await fetchAiData(deviceData, plantData);
         setAiAdvice(advice);
-        setAiAnalysis(parseAiAnalysis(advice));
-        setAiLoading(false);
+        setAdviceAiLoading(false);
     }, []);
 
     // ── 1. 디바이스 + 알림 로드
@@ -523,13 +531,15 @@ function MonitoringPage() {
                         }
                     }
 
-                    // AI 조언 + 분석 동시 로드
-                    setAiLoading(true);
+                    // 초기 로드 시 한 번의 API 호출로 둘 다 세팅
+                    setVisionAiLoading(true);
+                    setAdviceAiLoading(true);
                     const representativePlant = found.plants?.find(p => p.species) ?? null;
                     const advice = await fetchAiData(found, representativePlant);
                     setAiAdvice(advice);
                     setAiAnalysis(parseAiAnalysis(advice));
-                    setAiLoading(false);
+                    setVisionAiLoading(false);
+                    setAdviceAiLoading(false);
                 }
 
                 const noticeRes = await getAllNoticesApi();
@@ -745,12 +755,13 @@ function MonitoringPage() {
                                 <span className="text-sm">🔍</span>
                                 <h2 className="text-sm font-semibold text-gray-700">Vision AI 분석</h2>
                             </div>
+                            {/* Vision AI 전용 새로고침 버튼 */}
                             <button
-                                onClick={() => handleRefreshAi(device, selectedPlant)}
-                                disabled={aiLoading}
+                                onClick={() => handleRefreshVision(device, selectedPlant)}
+                                disabled={visionAiLoading}
                                 className="text-[10px] text-green-600 hover:text-green-700 font-medium disabled:text-gray-300 transition-colors"
                             >
-                                {aiLoading ? "분석 중..." : "↻ 새로고침"}
+                                {visionAiLoading ? "분석 중..." : "↻ 새로고침"}
                             </button>
                         </div>
 
@@ -780,8 +791,8 @@ function MonitoringPage() {
                             </div>
                         </div>
 
-                        {/* 생육 상태 / 질병 위험 — 센서 기반 */}
-                        {aiLoading ? (
+                        {/* 생육 상태 / 질병 위험 — Vision AI 로딩 상태 사용 */}
+                        {visionAiLoading ? (
                             <div className="flex flex-col gap-2">
                                 {["생육 상태", "질병 위험"].map(label => (
                                     <div key={label} className="flex justify-between items-center py-1">
@@ -1097,15 +1108,16 @@ function MonitoringPage() {
                                 <span className="text-sm">🤖</span>
                                 <h2 className="text-sm font-semibold text-green-700">AI 재배 조언</h2>
                             </div>
+                            {/* AI 재배 조언 전용 새로고침 버튼 */}
                             <button
-                                onClick={() => handleRefreshAi(device, selectedPlant)}
-                                disabled={aiLoading}
+                                onClick={() => handleRefreshAdvice(device, selectedPlant)}
+                                disabled={adviceAiLoading}
                                 className="text-xs text-green-600 hover:text-green-800 disabled:text-green-300 underline transition-colors"
                             >
                                 새로고침
                             </button>
                         </div>
-                        {aiLoading ? (
+                        {adviceAiLoading ? (
                             <div className="flex items-center justify-center py-6 text-green-600 text-xs gap-2">
                                 <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -1114,8 +1126,7 @@ function MonitoringPage() {
                                 AI가 분석 중이에요...
                             </div>
                         ) : aiAdvice ? (
-                            // 파싱 실패 시 원본 텍스트 그대로 표시
-                            <div className="max-h-60 overflow-y-auto pr-1">
+                            <div className="max-h-63 overflow-y-auto pr-1">
                                 <p className="text-xs text-green-800 leading-relaxed whitespace-pre-wrap">{aiAdvice}</p>
                             </div>
                         ) : (
