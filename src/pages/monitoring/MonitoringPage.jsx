@@ -24,7 +24,8 @@ const addHours = (date, h) => new Date(date.getTime() + h * 3600 * 1000);
 const addDays  = (date, d) => new Date(date.getTime() + d * 86400 * 1000);
 const fmtDate  = (date)    => `${date.getMonth() + 1}/${date.getDate()}`;
 
-const fetchAiAdvice = async (deviceData, plantData) => {
+// ── AI 조언 API 호출 ──────────────────────────────────────────
+const fetchAiData = async (deviceData, plantData) => {
     try {
         const token = localStorage.getItem("token");
         const daysSincePlanted = plantData?.plantedAt
@@ -46,11 +47,134 @@ const fetchAiAdvice = async (deviceData, plantData) => {
             })
         });
         const data = await response.json();
-        return data.advice;
+        return data.advice || null;
     } catch (err) {
         return null;
     }
 };
+
+// ── AI 조언 텍스트를 파싱해서 구조화된 분석 추출 ──────────────
+const parseAiAnalysis = (adviceText) => {
+    if (!adviceText) return null;
+
+    const sections = {
+        environment: null,
+        lighting: null,
+        nutrients: null,
+        growth: null,
+    };
+
+    const lines = adviceText.split('\n').map(l => l.trim()).filter(Boolean);
+    let currentSection = null;
+    const sectionBuf = {};
+
+    for (const line of lines) {
+        if (line.includes('[환경 전반]') || line.startsWith('환경 전반')) {
+            currentSection = 'environment';
+            sectionBuf[currentSection] = [];
+        } else if (line.includes('[조명 관리]') || line.startsWith('조명 관리')) {
+            currentSection = 'lighting';
+            sectionBuf[currentSection] = [];
+        } else if (line.includes('[양액 시스템]') || line.startsWith('양액 시스템')) {
+            currentSection = 'nutrients';
+            sectionBuf[currentSection] = [];
+        } else if (line.includes('[성장 속도]') || line.startsWith('성장 속도')) {
+            currentSection = 'growth';
+            sectionBuf[currentSection] = [];
+        } else if (currentSection) {
+            const colonIdx = line.indexOf(':');
+            const content = colonIdx !== -1 && colonIdx < 10 ? line.slice(colonIdx + 1).trim() : line;
+            if (content) sectionBuf[currentSection].push(content);
+        }
+    }
+
+    sections.environment = sectionBuf['environment']?.join(' ') || null;
+    sections.lighting    = sectionBuf['lighting']?.join(' ')    || null;
+    sections.nutrients   = sectionBuf['nutrients']?.join(' ')   || null;
+    sections.growth      = sectionBuf['growth']?.join(' ')      || null;
+
+    if (!sections.environment && !sections.lighting) {
+        const envMatch = adviceText.match(/환경 전반[：:]\s*(.+?)(?=조명|양액|성장|$)/s);
+        const lightMatch = adviceText.match(/조명 관리[：:]\s*(.+?)(?=환경|양액|성장|$)/s);
+        const nutriMatch = adviceText.match(/양액 시스템[：:]\s*(.+?)(?=환경|조명|성장|$)/s);
+        const growMatch = adviceText.match(/성장 속도[：:]\s*(.+?)(?=환경|조명|양액|$)/s);
+
+        sections.environment = envMatch?.[1]?.trim()   || null;
+        sections.lighting    = lightMatch?.[1]?.trim() || null;
+        sections.nutrients   = nutriMatch?.[1]?.trim() || null;
+        sections.growth      = growMatch?.[1]?.trim()  || null;
+    }
+
+    return sections;
+};
+
+// ── Vision AI 분석 점수 계산 (센서 데이터 기반) ───────────────
+const calcVisionScore = (deviceData, sensorData) => {
+    const { temperature: temp, humidity, ph, tds, water_level_status } = sensorData;
+
+    let score = 100;
+    let issues = [];
+
+    if (temp !== null) {
+        if (temp < 15 || temp > 32)       { score -= 25; issues.push("온도 위험"); }
+        else if (temp < 18 || temp > 28)  { score -= 10; issues.push("온도 주의"); }
+    } else { score -= 5; }
+
+    if (humidity !== null) {
+        if (humidity < 30 || humidity > 90)      { score -= 20; issues.push("습도 위험"); }
+        else if (humidity < 50 || humidity > 80) { score -= 8;  issues.push("습도 주의"); }
+    } else { score -= 5; }
+
+    if (ph !== null) {
+        if (ph < 4.5 || ph > 8.0)       { score -= 20; issues.push("pH 위험"); }
+        else if (ph < 5.5 || ph > 7.0)  { score -= 8;  issues.push("pH 주의"); }
+    } else { score -= 5; }
+
+    if (tds !== null) {
+        if (tds < 100 || tds > 1500)        { score -= 15; issues.push("양액 위험"); }
+        else if (tds < 200 || tds > 800)    { score -= 8;  issues.push("양액 주의"); }
+    } else { score -= 5; }
+
+    if (water_level_status === false) { score -= 15; issues.push("수위 부족"); }
+    else if (water_level_status === null) { score -= 3; }
+
+    score = Math.max(0, Math.min(100, score));
+
+    const growthStatus =
+        score >= 80 ? "정상" :
+        score >= 55 ? "주의" : "위험";
+
+    const diseaseRisk =
+        issues.some(i => i.includes("위험")) ? "높음" :
+        issues.length >= 2                   ? "보통" : "낮음";
+
+    const grade =
+        score >= 85 ? "우수" :
+        score >= 70 ? "양호" :
+        score >= 55 ? "보통" : "주의";
+
+    return { score, grade, growthStatus, diseaseRisk, issues };
+};
+
+function GrowthSummary({ text }) {
+    const [expanded, setExpanded] = useState(false);
+    const isLong = text.length > 60;
+    return (
+        <div className="pt-1 border-t border-gray-50 mt-1">
+            <p className="text-[10px] text-gray-400 leading-relaxed">
+                {!expanded && isLong ? text.slice(0, 60) + "..." : text}
+            </p>
+            {isLong && (
+                <button
+                    onClick={() => setExpanded(prev => !prev)}
+                    className="text-[10px] text-green-500 hover:text-green-600 mt-0.5"
+                >
+                    {expanded ? "접기" : "더보기"}
+                </button>
+            )}
+        </div>
+    );
+}
 
 // ── 생육 타임라인 차트 ────────────────────────────────────────
 function GrowthTimelineChart({ selectedPlant, prediction }) {
@@ -67,7 +191,6 @@ function GrowthTimelineChart({ selectedPlant, prediction }) {
     const TODAY = new Date();
     const parseDate = (str) => {
         if (!str) return null;
-        // 마이크로초 6자리 → 밀리초 3자리로 잘라냄
         const normalized = str.replace(" ", "T").replace(/(\.\d{3})\d+/, "$1");
         return new Date(normalized);
     };
@@ -75,7 +198,6 @@ function GrowthTimelineChart({ selectedPlant, prediction }) {
     const germinatedAt = parseDate(selectedPlant.germinatedAt);
     const maturedAt    = parseDate(selectedPlant.maturedAt);
 
-    // plantedAt 파싱 실패 시 빈 상태 표시
     if (!plantedAt || isNaN(plantedAt.getTime())) {
         return (
             <div className="h-40 flex items-center justify-center text-gray-300 text-sm">
@@ -85,13 +207,11 @@ function GrowthTimelineChart({ selectedPlant, prediction }) {
     }
     const currentStageIdx = STAGE_INDEX[selectedPlant.plantStage] ?? 0;
 
-    // 예측 기반 미래 날짜
     const germinationEtaDate = (!germinatedAt && prediction?.germinationEtaHours)
         ? addHours(TODAY, prediction.germinationEtaHours) : null;
     const matureEtaDate = (!maturedAt && prediction?.matureEtaHours)
         ? addHours(TODAY, prediction.matureEtaHours) : null;
 
-    // X축 범위
     const endDate = maturedAt || matureEtaDate || addDays(TODAY, 14);
     const totalMs = endDate - plantedAt;
 
@@ -103,13 +223,11 @@ function GrowthTimelineChart({ selectedPlant, prediction }) {
     const cx = (date) => PAD.left + ((date - plantedAt) / totalMs) * CW;
     const cy = (stage) => PAD.top + CH - (stage / 2) * CH;
 
-    // 실선 포인트 (실제 이력)
     const realPts = [{ date: plantedAt, stage: 0, label: "파종" }];
     if (germinatedAt) realPts.push({ date: germinatedAt, stage: 1, label: "발아" });
     if (maturedAt)    realPts.push({ date: maturedAt,    stage: 2, label: "수확" });
     else              realPts.push({ date: TODAY, stage: currentStageIdx, label: "현재" });
 
-    // 점선 포인트 (예측)
     const predPts = [{ date: TODAY, stage: currentStageIdx }];
     if (germinationEtaDate) predPts.push({ date: germinationEtaDate, stage: 1 });
     if (matureEtaDate)      predPts.push({ date: matureEtaDate,      stage: 2 });
@@ -126,7 +244,6 @@ function GrowthTimelineChart({ selectedPlant, prediction }) {
 
     const todayX = cx(TODAY);
 
-    // X축 레이블
     const xLabels = [
         { date: plantedAt, lines: [fmtDate(plantedAt), "파종"] },
         ...(germinatedAt ? [{ date: germinatedAt, lines: [fmtDate(germinatedAt), "발아"] }] : []),
@@ -139,20 +256,17 @@ function GrowthTimelineChart({ selectedPlant, prediction }) {
         ? Math.round((matureEtaDate - TODAY) / 86400000)
         : null;
 
-    // LightGBM 예측 단계 레이블
-    const lgbLabel = prediction
-        ? ["씨앗", "발아", "수확"][prediction.predictedStage]
-        : null;
-
-    // stage_probs 파싱
     let stageProbs = null;
     if (prediction?.stageProbs) {
         try { stageProbs = JSON.parse(prediction.stageProbs.replace(/'/g, '"')); } catch {}
     }
 
+    const lgbLabel = prediction
+        ? ["씨앗", "발아", "수확"][prediction.predictedStage]
+        : null;
+
     return (
         <div className="flex flex-col gap-3">
-            {/* 배지 */}
             <div className="flex items-center gap-2 flex-wrap">
                 {daysLeft !== null && (
                     <span className="text-xs bg-green-50 text-green-700 border border-green-200 px-2.5 py-1 rounded-full font-medium">
@@ -169,7 +283,6 @@ function GrowthTimelineChart({ selectedPlant, prediction }) {
                 )}
             </div>
 
-            {/* SVG 차트 */}
             <div className="w-full overflow-x-auto">
                 <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", minWidth: 260 }}
                     onMouseLeave={() => setHovered(null)}>
@@ -178,8 +291,6 @@ function GrowthTimelineChart({ selectedPlant, prediction }) {
                             <feDropShadow dx="0" dy="1" stdDeviation="2" floodOpacity="0.08" />
                         </filter>
                     </defs>
-
-                    {/* Y 그리드 */}
                     {[0, 1, 2].map(s => (
                         <g key={s}>
                             <line x1={PAD.left} y1={cy(s)} x2={W - PAD.right} y2={cy(s)}
@@ -190,28 +301,18 @@ function GrowthTimelineChart({ selectedPlant, prediction }) {
                             </text>
                         </g>
                     ))}
-
-                    {/* 오늘 구분선 */}
                     <line x1={todayX} y1={PAD.top - 8} x2={todayX} y2={H - PAD.bottom + 2}
                         stroke="#d1d5db" strokeWidth="1" strokeDasharray="3 2" />
-
-                    {/* 미래 배경 */}
                     <rect x={todayX} y={PAD.top}
                         width={Math.max(0, W - PAD.right - todayX)} height={CH}
                         fill="#f0fdf4" opacity="0.5" />
-
-                    {/* 실선 (과거) */}
                     <path d={realPath} fill="none" stroke="#22c55e"
                         strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-
-                    {/* 점선 (예측) */}
                     {predPath && (
                         <path d={predPath} fill="none" stroke="#86efac"
                             strokeWidth="2" strokeDasharray="5 3"
                             strokeLinejoin="round" strokeLinecap="round" />
                     )}
-
-                    {/* 실제 포인트 */}
                     {realPts.filter(p => p.label !== "현재").map((p, i) => (
                         <circle key={i}
                             cx={cx(p.date)} cy={cy(p.stage)} r="5"
@@ -221,15 +322,11 @@ function GrowthTimelineChart({ selectedPlant, prediction }) {
                             onMouseEnter={() => setHovered(p)}
                         />
                     ))}
-
-                    {/* 현재 (깜빡) */}
                     <circle cx={todayX} cy={cy(currentStageIdx)} r="5"
                         fill="#22c55e" stroke="white" strokeWidth="2">
                         <animate attributeName="r" values="5;7;5" dur="2s" repeatCount="indefinite" />
                         <animate attributeName="opacity" values="1;0.5;1" dur="2s" repeatCount="indefinite" />
                     </circle>
-
-                    {/* 예측 포인트들 */}
                     {germinationEtaDate && (
                         <g onMouseEnter={() => setHovered({ date: germinationEtaDate, stage: 1, label: "발아 예상" })}>
                             <circle cx={cx(germinationEtaDate)} cy={cy(1)} r="5"
@@ -246,8 +343,6 @@ function GrowthTimelineChart({ selectedPlant, prediction }) {
                                 fill="none" stroke="#86efac" strokeWidth="1.5" opacity="0.5" />
                         </g>
                     )}
-
-                    {/* X축 레이블 */}
                     {xLabels.map((l, i) => (
                         <g key={i}>
                             {l.lines.map((line, j) => (
@@ -263,8 +358,6 @@ function GrowthTimelineChart({ selectedPlant, prediction }) {
                             ))}
                         </g>
                     ))}
-
-                    {/* 툴팁 */}
                     {hovered && (() => {
                         const tx = cx(hovered.date);
                         const ty = cy(hovered.stage);
@@ -289,7 +382,6 @@ function GrowthTimelineChart({ selectedPlant, prediction }) {
                 </svg>
             </div>
 
-            {/* 하단 요약 카드 */}
             <div className="grid grid-cols-3 gap-2">
                 {[
                     {
@@ -317,7 +409,6 @@ function GrowthTimelineChart({ selectedPlant, prediction }) {
                 ))}
             </div>
 
-            {/* 단계별 확률 (LightGBM) */}
             {stageProbs && (
                 <div className="flex flex-col gap-1 pt-1 border-t border-gray-50">
                     <p className="text-[10px] text-gray-400 mb-0.5">72h 후 단계별 확률</p>
@@ -374,7 +465,11 @@ function MonitoringPage() {
     const [selectedPort, setSelectedPort] = useState(0);
     const [prediction, setPrediction] = useState(null);
     const [aiAdvice, setAiAdvice] = useState(null);
-    const [aiLoading, setAiLoading] = useState(false);
+    const [aiAnalysis, setAiAnalysis] = useState(null);
+
+    // ── 분리된 로딩 상태 ───────────────────────────────────────
+    const [visionAiLoading, setVisionAiLoading] = useState(false);
+    const [adviceAiLoading, setAdviceAiLoading] = useState(false);
 
     const PORT_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7];
 
@@ -395,6 +490,24 @@ function MonitoringPage() {
     const [saveMessage, setSaveMessage] = useState("");
     const [ledSaving, setLedSaving] = useState(false);
     const [captureSaving, setCaptureSaving] = useState(false);
+
+    // ── Vision AI 분석만 새로고침 (점수 + 분석 섹션) ─────────────
+    const handleRefreshVision = useCallback(async (deviceData, plantData) => {
+        if (!deviceData) return;
+        setVisionAiLoading(true);
+        const advice = await fetchAiData(deviceData, plantData);
+        setAiAnalysis(parseAiAnalysis(advice));
+        setVisionAiLoading(false);
+    }, []);
+
+    // ── AI 재배 조언만 새로고침 (조언 텍스트) ────────────────────
+    const handleRefreshAdvice = useCallback(async (deviceData, plantData) => {
+        if (!deviceData) return;
+        setAdviceAiLoading(true);
+        const advice = await fetchAiData(deviceData, plantData);
+        setAiAdvice(advice);
+        setAdviceAiLoading(false);
+    }, []);
 
     // ── 1. 디바이스 + 알림 로드
     useEffect(() => {
@@ -418,11 +531,15 @@ function MonitoringPage() {
                         }
                     }
 
-                    setAiLoading(true);
+                    // 초기 로드 시 한 번의 API 호출로 둘 다 세팅
+                    setVisionAiLoading(true);
+                    setAdviceAiLoading(true);
                     const representativePlant = found.plants?.find(p => p.species) ?? null;
-                    const advice = await fetchAiAdvice(found, representativePlant);
+                    const advice = await fetchAiData(found, representativePlant);
                     setAiAdvice(advice);
-                    setAiLoading(false);
+                    setAiAnalysis(parseAiAnalysis(advice));
+                    setVisionAiLoading(false);
+                    setAdviceAiLoading(false);
                 }
 
                 const noticeRes = await getAllNoticesApi();
@@ -435,14 +552,11 @@ function MonitoringPage() {
         fetchData();
     }, [serialNumber]);
 
-    // ── 2. 예측 조회 (selectedPort 변경 시)
+    // ── 2. 예측 조회
     useEffect(() => {
         if (!device) return;
         const plant = device.plants?.find(p => p.portIndex === selectedPort);
-        if (!plant) {
-            setPrediction(null);
-            return;
-        }
+        if (!plant) { setPrediction(null); return; }
         getLatestPredictionApi(plant.id)
             .then(res => setPrediction(res.data))
             .catch(() => setPrediction(null));
@@ -586,6 +700,9 @@ function MonitoringPage() {
         ? Math.floor((new Date() - new Date(selectedPlant.plantedAt.replace(" ", "T"))) / (1000 * 60 * 60 * 24))
         : null;
 
+    // 센서 기반 점수 계산
+    const visionScore = calcVisionScore(device, sensorData);
+
     return (
         <div className="min-h-screen bg-gray-50">
             {/* 헤더 */}
@@ -631,24 +748,85 @@ function MonitoringPage() {
                         )}
                     </div>
 
-                    {/* Vision AI */}
+                    {/* Vision AI 분석 — 센서 기반 실시간 점수 + AI 파싱 결과 */}
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
-                        <div className="flex items-center gap-2 mb-3">
-                            <span className="text-sm">🔍</span>
-                            <h2 className="text-sm font-semibold text-gray-700">Vision AI 분석</h2>
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm">🔍</span>
+                                <h2 className="text-sm font-semibold text-gray-700">Vision AI 분석</h2>
+                            </div>
+                            {/* Vision AI 전용 새로고침 버튼 */}
+                            <button
+                                onClick={() => handleRefreshVision(device, selectedPlant)}
+                                disabled={visionAiLoading}
+                                className="text-[10px] text-green-600 hover:text-green-700 font-medium disabled:text-gray-300 transition-colors"
+                            >
+                                {visionAiLoading ? "분석 중..." : "↻ 새로고침"}
+                            </button>
                         </div>
-                        <div className="grid grid-cols-2 lg:grid-cols-1 gap-2 text-xs">
-                            {[
-                                { label: "생육 상태", value: "✓ 정상", color: "text-green-500" },
-                                { label: "질병", value: "✓ 이상없음", color: "text-green-500" },
-                                { label: "종합 평가", value: "85점 / 우수", color: "text-green-500" },
-                            ].map(({ label, value, color }) => (
-                                <div key={label} className="flex justify-between items-center py-1">
-                                    <span className="text-gray-400">{label}</span>
-                                    <span className={`font-medium ${color}`}>{value}</span>
+
+                        {/* 센서 기반 점수 — 항상 표시 */}
+                        <div className="flex items-center gap-3 mb-3 p-2.5 bg-gray-50 rounded-xl">
+                            <div className="relative w-12 h-12 flex-shrink-0">
+                                <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+                                    <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" strokeWidth="3" />
+                                    <circle cx="18" cy="18" r="15.9" fill="none"
+                                        stroke={visionScore.score >= 80 ? "#22c55e" : visionScore.score >= 55 ? "#f59e0b" : "#ef4444"}
+                                        strokeWidth="3"
+                                        strokeDasharray={`${visionScore.score} 100`}
+                                        strokeLinecap="round" />
+                                </svg>
+                                <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-700">
+                                    {visionScore.score}
+                                </span>
+                            </div>
+                            <div>
+                                <p className="text-xs font-semibold text-gray-700">{visionScore.grade}</p>
+                                <p className="text-[10px] text-gray-400 mt-0.5">종합 건강 점수</p>
+                                {visionScore.issues.length > 0 && (
+                                    <p className="text-[10px] text-yellow-500 mt-0.5">
+                                        ⚠ {visionScore.issues.slice(0, 2).join(", ")}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* 생육 상태 / 질병 위험 — Vision AI 로딩 상태 사용 */}
+                        {visionAiLoading ? (
+                            <div className="flex flex-col gap-2">
+                                {["생육 상태", "질병 위험"].map(label => (
+                                    <div key={label} className="flex justify-between items-center py-1">
+                                        <span className="text-xs text-gray-400">{label}</span>
+                                        <span className="w-16 h-3 bg-gray-100 rounded animate-pulse" />
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-1 text-xs">
+                                <div className="flex justify-between items-center py-1 border-b border-gray-50">
+                                    <span className="text-gray-400">생육 상태</span>
+                                    <span className={`font-medium ${
+                                        visionScore.growthStatus === "정상" ? "text-green-500" :
+                                        visionScore.growthStatus === "주의" ? "text-yellow-500" : "text-red-500"
+                                    }`}>
+                                        {visionScore.growthStatus === "정상" ? "✓ " : "⚠ "}
+                                        {visionScore.growthStatus}
+                                    </span>
                                 </div>
-                            ))}
-                        </div>
+                                <div className="flex justify-between items-center py-1">
+                                    <span className="text-gray-400">질병 위험</span>
+                                    <span className={`font-medium ${
+                                        visionScore.diseaseRisk === "낮음" ? "text-green-500" :
+                                        visionScore.diseaseRisk === "보통" ? "text-yellow-500" : "text-red-500"
+                                    }`}>
+                                        {visionScore.diseaseRisk === "낮음" ? "✓ " : "⚠ "}
+                                        {visionScore.diseaseRisk}
+                                    </span>
+                                </div>
+                                {/* AI가 파싱한 생육 요약이 있으면 한 줄 표시 */}
+                                {aiAnalysis?.growth && <GrowthSummary text={aiAnalysis.growth} />}
+                            </div>
+                        )}
                     </div>
 
                     {/* 최근 알림 */}
@@ -790,7 +968,7 @@ function MonitoringPage() {
                         </div>
                     </div>
 
-                    {/* ── 생육 변화 (타임라인 차트) ── */}
+                    {/* 생육 변화 */}
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm">
                         <div className="flex items-center justify-between mb-3">
                             <h2 className="text-sm font-semibold text-gray-700">📈 생육 변화</h2>
@@ -804,7 +982,6 @@ function MonitoringPage() {
                             </div>
                         </div>
 
-                        {/* 포트 선택 */}
                         <div className="flex gap-1 mb-3 flex-wrap">
                             {PORT_OPTIONS.map(port => {
                                 const portPlant = device.plants?.find(p => p.portIndex === port);
@@ -924,23 +1101,23 @@ function MonitoringPage() {
                         </button>
                     </div>
 
-                    {/* AI 조언 */}
+                    {/* AI 재배 조언 */}
                     <div className="bg-green-50 rounded-2xl border border-green-100 p-4">
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2">
                                 <span className="text-sm">🤖</span>
                                 <h2 className="text-sm font-semibold text-green-700">AI 재배 조언</h2>
                             </div>
-                            <button onClick={async () => {
-                                setAiLoading(true);
-                                const advice = await fetchAiAdvice(device, selectedPlant);
-                                setAiAdvice(advice);
-                                setAiLoading(false);
-                            }} className="text-xs text-green-600 hover:text-green-800 underline">
+                            {/* AI 재배 조언 전용 새로고침 버튼 */}
+                            <button
+                                onClick={() => handleRefreshAdvice(device, selectedPlant)}
+                                disabled={adviceAiLoading}
+                                className="text-xs text-green-600 hover:text-green-800 disabled:text-green-300 underline transition-colors"
+                            >
                                 새로고침
                             </button>
                         </div>
-                        {aiLoading ? (
+                        {adviceAiLoading ? (
                             <div className="flex items-center justify-center py-6 text-green-600 text-xs gap-2">
                                 <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -949,7 +1126,7 @@ function MonitoringPage() {
                                 AI가 분석 중이에요...
                             </div>
                         ) : aiAdvice ? (
-                            <div className="max-h-40 overflow-y-auto pr-1">
+                            <div className="max-h-63 overflow-y-auto pr-1">
                                 <p className="text-xs text-green-800 leading-relaxed whitespace-pre-wrap">{aiAdvice}</p>
                             </div>
                         ) : (
