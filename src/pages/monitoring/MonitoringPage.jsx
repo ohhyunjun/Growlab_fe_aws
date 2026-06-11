@@ -109,51 +109,128 @@ const parseAiAnalysis = (adviceText) => {
 };
 
 // ── Vision AI 분석 점수 계산 (센서 데이터 기반) ───────────────
-const calcVisionScore = (deviceData, sensorData) => {
-    const { temperature: temp, humidity, ph, tds, water_level_status } = sensorData;
+const calcVisionScore = (sensorData) => {
+    const { temperature, humidity, ph, tds, water_level_status } = sensorData;
+
+    const validCount = [
+        temperature,
+        humidity,
+        ph,
+        tds,
+        water_level_status
+    ].filter(v => v !== null).length;
+
+    if (validCount === 0) {
+        return {
+            score: 0,
+            grade: "-",
+            growthStatus: "분석 대기",
+            diseaseRisk: "-",
+            issues: []
+        };
+    }
 
     let score = 100;
-    let issues = [];
+    const issues = [];
 
-    if (temp !== null) {
-        if (temp < 15 || temp > 32)       { score -= 25; issues.push("온도 위험"); }
-        else if (temp < 18 || temp > 28)  { score -= 10; issues.push("온도 주의"); }
-    } else { score -= 5; }
+    // ===== 온도 (최적 23도) =====
+    if (temperature != null) {
+        const diff = Math.abs(temperature - 23);
 
-    if (humidity !== null) {
-        if (humidity < 30 || humidity > 90)      { score -= 20; issues.push("습도 위험"); }
-        else if (humidity < 50 || humidity > 80) { score -= 8;  issues.push("습도 주의"); }
-    } else { score -= 5; }
+        if (diff <= 2) {}
+        else if (diff <= 4) score -= 3;
+        else if (diff <= 6) score -= 8;
+        else if (diff <= 8) {
+            score -= 15;
+            issues.push("온도 주의");
+        } else {
+            score -= 25;
+            issues.push("온도 위험");
+        }
+    } else score -= 5;
 
-    if (ph !== null) {
-        if (ph < 4.5 || ph > 8.0)       { score -= 20; issues.push("pH 위험"); }
-        else if (ph < 5.5 || ph > 7.0)  { score -= 8;  issues.push("pH 주의"); }
-    } else { score -= 5; }
+    // ===== 습도 (최적 65%) =====
+    if (humidity != null) {
+        const diff = Math.abs(humidity - 65);
 
-    if (tds !== null) {
-        if (tds < 100 || tds > 1500)        { score -= 15; issues.push("양액 위험"); }
-        else if (tds < 200 || tds > 800)    { score -= 8;  issues.push("양액 주의"); }
-    } else { score -= 5; }
+        if (diff <= 10) {}
+        else if (diff <= 15) score -= 3;
+        else if (diff <= 20) score -= 8;
+        else if (diff <= 25) {
+            score -= 15;
+            issues.push("습도 주의");
+        } else {
+            score -= 25;
+            issues.push("습도 위험");
+        }
+    } else score -= 5;
 
-    if (water_level_status === false) { score -= 15; issues.push("수위 부족"); }
-    else if (water_level_status === null) { score -= 3; }
+    // ===== pH (최적 6.0) =====
+    if (ph != null) {
+        const diff = Math.abs(ph - 6.0);
 
-    score = Math.max(0, Math.min(100, score));
+        if (diff <= 0.3) {}
+        else if (diff <= 0.6) score -= 3;
+        else if (diff <= 1.0) score -= 8;
+        else if (diff <= 1.5) {
+            score -= 15;
+            issues.push("pH 주의");
+        } else {
+            score -= 25;
+            issues.push("pH 위험");
+        }
+    } else score -= 5;
+
+    // ===== TDS (최적 1000ppm) =====
+    if (tds != null) {
+        const diff = Math.abs(tds - 1000);
+
+        if (diff <= 100) {}
+        else if (diff <= 200) score -= 3;
+        else if (diff <= 300) score -= 8;
+        else if (diff <= 500) {
+            score -= 15;
+            issues.push("양액 주의");
+        } else {
+            score -= 25;
+            issues.push("양액 위험");
+        }
+    } else score -= 5;
+
+    // ===== 수위 =====
+    if (water_level_status === false) {
+        score -= 15;
+        issues.push("수위 부족");
+    } else if (water_level_status === null) {
+        score -= 3;
+    }
+
+    score = Math.max(0, Math.round(score));
 
     const growthStatus =
-        score >= 80 ? "정상" :
-        score >= 55 ? "주의" : "위험";
+        score >= 85 ? "정상" :
+        score >= 65 ? "주의" :
+        "위험";
 
     const diseaseRisk =
         issues.some(i => i.includes("위험")) ? "높음" :
-        issues.length >= 2                   ? "보통" : "낮음";
+        issues.length >= 2 ? "보통" :
+        "낮음";
 
     const grade =
-        score >= 85 ? "우수" :
-        score >= 70 ? "양호" :
-        score >= 55 ? "보통" : "주의";
+        score >= 95 ? "S" :
+        score >= 85 ? "A" :
+        score >= 75 ? "B" :
+        score >= 65 ? "C" :
+        "D";
 
-    return { score, grade, growthStatus, diseaseRisk, issues };
+    return {
+        score,
+        grade,
+        growthStatus,
+        diseaseRisk,
+        issues,
+    };
 };
 
 function GrowthSummary({ text }) {
@@ -701,7 +778,7 @@ function MonitoringPage() {
         : null;
 
     // 센서 기반 점수 계산
-    const visionScore = calcVisionScore(device, sensorData);
+    const visionScore = calcVisionScore(sensorData);
 
     return (
         <div className="min-h-screen bg-gray-50">
