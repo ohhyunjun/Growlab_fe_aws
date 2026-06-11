@@ -640,8 +640,7 @@ function MonitoringPage() {
                         <div className="grid grid-cols-2 lg:grid-cols-1 gap-2 text-xs">
                             {[
                                 { label: "생육 상태", value: "✓ 정상", color: "text-green-500" },
-                                { label: "병충해", value: "✓ 이상없음", color: "text-green-500" },
-                                { label: "성장 속도", value: "+12% 빠름", color: "text-blue-500" },
+                                { label: "질병", value: "✓ 이상없음", color: "text-green-500" },
                                 { label: "종합 평가", value: "85점 / 우수", color: "text-green-500" },
                             ].map(({ label, value, color }) => (
                                 <div key={label} className="flex justify-between items-center py-1">
