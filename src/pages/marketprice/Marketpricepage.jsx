@@ -4,10 +4,6 @@ import { getLatestPrice, getWeeklyPrice } from "../../api/marketpriceApi";
 
 /**
  * ITEMS: itemCode/kindCode는 KAMIS 품목코드 기준
- * 도매(WHOLESALE)와 소매(RETAIL)가 같은 itemCode/kindCode를 공유하므로
- * latest/weekly API를 각각 2번 호출해서 합칩니다.
- *
- * 아래 코드/품종코드는 실제 DB에 들어있는 값으로 교체하세요.
  */
 const ITEMS = [
     { name: "방울토마토", emoji: "🍅", itemCode: "422", kindCode: "01" },
@@ -15,20 +11,46 @@ const ITEMS = [
     { name: "적상추",    emoji: "🥬", itemCode: "214", kindCode: "01" },
     { name: "딸기",     emoji: "🍓", itemCode: "226", kindCode: "00" },
     { name: "파프리카", emoji: "🌶️", itemCode: "256", kindCode: "00" },
-    { name: "풋고추",     emoji: "🌶️", itemCode: "242", kindCode: "04" },
+    { name: "풋고추",   emoji: "🌶️", itemCode: "242", kindCode: "04" },
     { name: "블루베리", emoji: "🫐", itemCode: "429", kindCode: "01" },
-    { name: "시금치",    emoji: "🥬", itemCode: "213", kindCode: "00" },
-    { name: "토마토",    emoji: "🍅", itemCode: "225", kindCode: "00" }, 
-    { name: "오이", emoji: "🥒", itemCode: "223", kindCode: "01" }, 
-    { name: "피망",     emoji: "🫑", itemCode: "255", kindCode: "00" }, 
-    { name: "깻잎",     emoji: "🍃", itemCode: "253", kindCode: "00" }    
+    { name: "시금치",   emoji: "🥬", itemCode: "213", kindCode: "00" },
+    { name: "토마토",   emoji: "🍅", itemCode: "225", kindCode: "00" },
+    { name: "오이",     emoji: "🥒", itemCode: "223", kindCode: "01" },
+    { name: "피망",     emoji: "🫑", itemCode: "255", kindCode: "00" },
+    { name: "깻잎",     emoji: "🍃", itemCode: "253", kindCode: "00" },
 ];
 
-// 전일 대비 변동 계산
+/**
+ * 날짜별 평균 계산 후 최근 7일만 반환
+ * priceHistory: [{ date: "YYYY-MM-DD", price: number }, ...]
+ */
+function aggregateByDate(priceHistory) {
+    if (!priceHistory || priceHistory.length === 0) return [];
+
+    const grouped = priceHistory.reduce((acc, { date, price }) => {
+        if (price == null) return acc;
+        const day = date?.slice(0, 10); // "YYYY-MM-DD"
+        if (!day) return acc;
+        if (!acc[day]) acc[day] = { sum: 0, count: 0 };
+        acc[day].sum += price;
+        acc[day].count += 1;
+        return acc;
+    }, {});
+
+    return Object.entries(grouped)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .slice(-7)
+        .map(([date, { sum, count }]) => ({
+            date,
+            price: Math.round(sum / count),
+        }));
+}
+
+// 전일 대비 변동 계산 (집계된 7일 데이터 기준)
 function getPriceTrend(weekly) {
-    if (!weekly || weekly.length < 2) return null;
-    const history = weekly.priceHistory;
-    if (!history || history.length < 2) return null;
+    if (!weekly) return null;
+    const history = aggregateByDate(weekly.priceHistory);
+    if (history.length < 2) return null;
     const last = history[history.length - 1].price;
     const prev = history[history.length - 2].price;
     const diff = last - prev;
@@ -37,7 +59,7 @@ function getPriceTrend(weekly) {
     return { dir: "flat", label: "변동없음", color: "text-gray-400" };
 }
 
-// 미니 바 차트
+// 미니 바 차트 (최근 7일 집계 기준)
 function MiniBarChart({ history }) {
     if (!history || history.length === 0) return null;
     const values = history.map(d => d.price ?? 0);
@@ -60,14 +82,12 @@ function MiniBarChart({ history }) {
 
 // 품목 카드
 function PriceCard({ item, onClick, isSelected }) {
-    const [retail, setRetail]   = useState(null); // getLatestPrice → RETAIL
-    const [weekly, setWeekly]   = useState(null); // getWeeklyPrice
-    const [status, setStatus]   = useState("idle");
+    const [retail, setRetail] = useState(null);
+    const [weekly, setWeekly] = useState(null);
+    const [status, setStatus] = useState("idle");
 
     useEffect(() => {
         setStatus("loading");
-        // latest는 marketType별로 각각 존재 → weekly(RETAIL)에서 currentPrice 사용
-        // latest API는 DB에서 가장 최근 1건 반환 (marketType 구분 없이 kindCode 기준)
         Promise.all([
             getLatestPrice(item.itemCode, item.kindCode),
             getWeeklyPrice(item.itemCode, item.kindCode),
@@ -81,9 +101,8 @@ function PriceCard({ item, onClick, isSelected }) {
     }, [item.itemCode, item.kindCode]);
 
     const trend = getPriceTrend(weekly);
+    const aggregatedHistory = aggregateByDate(weekly?.priceHistory);
 
-    // latest: { currentPrice, unit, marketType, ... }
-    // weekly: { currentPrice, priceHistory: [{date, price}], unit, marketType, ... }
     const price = retail?.currentPrice;
     const unit  = retail?.unit ?? weekly?.unit;
 
@@ -122,7 +141,7 @@ function PriceCard({ item, onClick, isSelected }) {
                             </p>
                         </div>
                     </div>
-                    <MiniBarChart history={weekly?.priceHistory} />
+                    <MiniBarChart history={aggregatedHistory} />
                     <div className="flex justify-between text-[10px] text-gray-300 mt-1">
                         <span>6일 전</span><span>오늘</span>
                     </div>
@@ -145,7 +164,7 @@ function DetailPanel({ item, latest, weekly, onClose }) {
     );
 
     const trend   = getPriceTrend(weekly);
-    const history = weekly?.priceHistory ?? [];
+    const history = aggregateByDate(weekly?.priceHistory); // ✅ 7일 집계
     const max     = Math.max(...history.map(d => d.price ?? 0), 1);
 
     return (
@@ -165,7 +184,7 @@ function DetailPanel({ item, latest, weekly, onClose }) {
                 <button onClick={onClose} className="text-gray-300 hover:text-gray-500 text-lg">✕</button>
             </div>
 
-            {/* 현재가 + 변동률 */}
+            {/* 현재가 + 7일 평균 */}
             {weekly && (
                 <div className="grid grid-cols-2 gap-3">
                     <div className="bg-green-50 rounded-2xl p-4 text-center">
@@ -179,8 +198,11 @@ function DetailPanel({ item, latest, weekly, onClose }) {
                     <div className="bg-blue-50 rounded-2xl p-4 text-center">
                         <p className="text-xs text-gray-400 mb-1">7일 평균</p>
                         <p className="text-2xl font-bold text-blue-600">
-                            {weekly.averagePrice != null
-                                ? weekly.averagePrice.toLocaleString() : "-"}
+                            {history.length > 0
+                                ? Math.round(
+                                    history.reduce((sum, d) => sum + (d.price ?? 0), 0) / history.length
+                                ).toLocaleString()
+                                : "-"}
                         </p>
                         <p className="text-xs text-blue-400">원</p>
                     </div>
@@ -222,15 +244,15 @@ function DetailPanel({ item, latest, weekly, onClose }) {
                 </div>
             )}
 
-            {/* 주간 바 차트 */}
+            {/* 주간 바 차트 (7일 집계) */}
             {history.length > 0 ? (
-                <div className="overflow-hidden">  {/* ✅ 추가 */}
+                <div className="overflow-visible">
                     <h3 className="text-xs font-semibold text-gray-500 mb-3">📈 최근 7일 가격 추이</h3>
-                    <div className="flex items-end gap-2 h-28 overflow-x-auto">  {/* ✅ overflow-x-auto 추가 */}
+                    <div className="flex items-end gap-2 h-28 overflow-visible">
                         {history.map((d, i) => (
-                            <div key={i} className="flex-1 min-w-[16px] flex flex-col items-center group relative">  {/* ✅ min-w 추가 */}
+                            <div key={i} className="flex-1 flex flex-col items-center group relative">
                                 {/* 툴팁 */}
-                                <div className="hidden group-hover:flex flex-col items-center absolute -translate-y-10 bg-gray-800 text-white text-[10px] rounded-lg px-2 py-1 z-10 whitespace-nowrap">
+                                <div className="hidden group-hover:flex flex-col items-center absolute bottom-full mb-1 bg-gray-800 text-white text-[10px] rounded-lg px-2 py-1 z-10 whitespace-nowrap">
                                     <span>{d.price?.toLocaleString()}원</span>
                                 </div>
                                 <div
@@ -295,7 +317,7 @@ function MarketPricePage() {
                         />
                     ))}
                 </div>
-                <div className="w-full lg:w-72 lg:flex-shrink-0 lg:sticky lg:top-4">  {/* ✅ sticky top-4 추가 */}
+                <div className="w-full lg:w-72 lg:flex-shrink-0 lg:sticky lg:top-4">
                     <DetailPanel
                         item={selectedItem}
                         latest={selectedLatest}
