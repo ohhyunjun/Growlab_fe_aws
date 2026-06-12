@@ -12,7 +12,6 @@ const ITEMS = [
     { name: "딸기",     emoji: "🍓", itemCode: "226", kindCode: "00" },
     { name: "파프리카", emoji: "🌶️", itemCode: "256", kindCode: "00" },
     { name: "풋고추",   emoji: "🌶️", itemCode: "242", kindCode: "04" },
-    { name: "블루베리", emoji: "🫐", itemCode: "429", kindCode: "01" },
     { name: "시금치",   emoji: "🥬", itemCode: "213", kindCode: "00" },
     { name: "토마토",   emoji: "🍅", itemCode: "225", kindCode: "00" },
     { name: "오이",     emoji: "🥒", itemCode: "223", kindCode: "01" },
@@ -22,14 +21,13 @@ const ITEMS = [
 
 /**
  * 날짜별 평균 계산 후 최근 7일만 반환
- * priceHistory: [{ date: "YYYY-MM-DD", price: number }, ...]
  */
 function aggregateByDate(priceHistory) {
     if (!priceHistory || priceHistory.length === 0) return [];
 
     const grouped = priceHistory.reduce((acc, { date, price }) => {
         if (price == null) return acc;
-        const day = date?.slice(0, 10); // "YYYY-MM-DD"
+        const day = date?.slice(0, 10);
         if (!day) return acc;
         if (!acc[day]) acc[day] = { sum: 0, count: 0 };
         acc[day].sum += price;
@@ -46,7 +44,7 @@ function aggregateByDate(priceHistory) {
         }));
 }
 
-// 전일 대비 변동 계산 (집계된 7일 데이터 기준)
+// 전일 대비 변동 계산
 function getPriceTrend(weekly) {
     if (!weekly) return null;
     const history = aggregateByDate(weekly.priceHistory);
@@ -59,18 +57,20 @@ function getPriceTrend(weekly) {
     return { dir: "flat", label: "변동없음", color: "text-gray-400" };
 }
 
-// 미니 바 차트 (최근 7일 집계 기준)
-function MiniBarChart({ history }) {
+// 미니 바 차트
+function MiniBarChart({ history, marketType }) {
     if (!history || history.length === 0) return null;
     const values = history.map(d => d.price ?? 0);
     const max = Math.max(...values, 1);
+    const activeColor  = marketType === "WHOLESALE" ? "bg-blue-500"  : "bg-green-500";
+    const inactiveColor = marketType === "WHOLESALE" ? "bg-blue-100" : "bg-green-100";
     return (
         <div className="flex items-end gap-1 h-12">
             {values.map((v, i) => (
                 <div key={i} className="flex-1">
                     <div
                         className={`w-full rounded-t-sm transition-all ${
-                            i === values.length - 1 ? "bg-green-500" : "bg-green-100"
+                            i === values.length - 1 ? activeColor : inactiveColor
                         }`}
                         style={{ height: `${Math.max((v / max) * 44, 2)}px` }}
                     />
@@ -81,7 +81,7 @@ function MiniBarChart({ history }) {
 }
 
 // 품목 카드
-function PriceCard({ item, onClick, isSelected }) {
+function PriceCard({ item, onClick, isSelected, marketType }) {
     const [retail, setRetail] = useState(null);
     const [weekly, setWeekly] = useState(null);
     const [status, setStatus] = useState("idle");
@@ -89,8 +89,8 @@ function PriceCard({ item, onClick, isSelected }) {
     useEffect(() => {
         setStatus("loading");
         Promise.all([
-            getLatestPrice(item.itemCode, item.kindCode),
-            getWeeklyPrice(item.itemCode, item.kindCode),
+            getLatestPrice(item.itemCode, item.kindCode, marketType),
+            getWeeklyPrice(item.itemCode, item.kindCode, marketType),
         ])
             .then(([latestRes, weeklyRes]) => {
                 setRetail(latestRes.data);
@@ -98,7 +98,7 @@ function PriceCard({ item, onClick, isSelected }) {
                 setStatus("ok");
             })
             .catch(() => setStatus("error"));
-    }, [item.itemCode, item.kindCode]);
+    }, [item.itemCode, item.kindCode, marketType]);
 
     const trend = getPriceTrend(weekly);
     const aggregatedHistory = aggregateByDate(weekly?.priceHistory);
@@ -106,11 +106,17 @@ function PriceCard({ item, onClick, isSelected }) {
     const price = retail?.currentPrice;
     const unit  = retail?.unit ?? weekly?.unit;
 
+    const isWholesale = marketType === "WHOLESALE";
+
     return (
         <div
             onClick={() => onClick(item, retail, weekly)}
             className={`bg-white rounded-2xl border p-4 shadow-sm cursor-pointer transition-all hover:shadow-md ${
-                isSelected ? "border-green-400 ring-2 ring-green-100" : "border-gray-100"
+                isSelected
+                    ? isWholesale
+                        ? "border-blue-400 ring-2 ring-blue-100"
+                        : "border-green-400 ring-2 ring-green-100"
+                    : "border-gray-100"
             }`}
         >
             <div className="flex items-center justify-between mb-3">
@@ -134,14 +140,14 @@ function PriceCard({ item, onClick, isSelected }) {
             {status === "ok" && (
                 <>
                     <div className="mb-3 text-xs">
-                        <div className="bg-green-50 rounded-xl p-2 text-center">
+                        <div className={`rounded-xl p-2 text-center ${isWholesale ? "bg-blue-50" : "bg-green-50"}`}>
                             <p className="text-gray-400 mb-0.5">현재가</p>
-                            <p className="font-bold text-green-600">
+                            <p className={`font-bold ${isWholesale ? "text-blue-600" : "text-green-600"}`}>
                                 {price != null ? `${price.toLocaleString()}원` : "-"}
                             </p>
                         </div>
                     </div>
-                    <MiniBarChart history={aggregatedHistory} />
+                    <MiniBarChart history={aggregatedHistory} marketType={marketType} />
                     <div className="flex justify-between text-[10px] text-gray-300 mt-1">
                         <span>6일 전</span><span>오늘</span>
                     </div>
@@ -155,7 +161,7 @@ function PriceCard({ item, onClick, isSelected }) {
 }
 
 // 상세 패널
-function DetailPanel({ item, latest, weekly, onClose }) {
+function DetailPanel({ item, latest, weekly, onClose, marketType }) {
     if (!item) return (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 flex flex-col items-center justify-center text-center h-full min-h-[300px]">
             <span className="text-4xl mb-3">📊</span>
@@ -163,9 +169,15 @@ function DetailPanel({ item, latest, weekly, onClose }) {
         </div>
     );
 
+    const isWholesale = marketType === "WHOLESALE";
     const trend   = getPriceTrend(weekly);
-    const history = aggregateByDate(weekly?.priceHistory); // ✅ 7일 집계
+    const history = aggregateByDate(weekly?.priceHistory);
     const max     = Math.max(...history.map(d => d.price ?? 0), 1);
+
+    // 7일 평균: priceHistory 기준 직접 계산
+    const avgPrice = history.length > 0
+        ? Math.round(history.reduce((sum, d) => sum + (d.price ?? 0), 0) / history.length)
+        : null;
 
     return (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col gap-4">
@@ -175,9 +187,16 @@ function DetailPanel({ item, latest, weekly, onClose }) {
                     <span className="text-3xl">{item.emoji}</span>
                     <div>
                         <h2 className="text-base font-bold text-gray-800">{item.name}</h2>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-xs text-gray-400 flex items-center gap-1.5">
                             {weekly?.kindName && `${weekly.kindName} · `}
                             단위: {weekly?.unit ?? "-"}
+                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                                isWholesale
+                                    ? "bg-blue-100 text-blue-600"
+                                    : "bg-green-100 text-green-600"
+                            }`}>
+                                {isWholesale ? "도매" : "소매"}
+                            </span>
                         </p>
                     </div>
                 </div>
@@ -187,24 +206,20 @@ function DetailPanel({ item, latest, weekly, onClose }) {
             {/* 현재가 + 7일 평균 */}
             {weekly && (
                 <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-green-50 rounded-2xl p-4 text-center">
+                    <div className={`rounded-2xl p-4 text-center ${isWholesale ? "bg-blue-50" : "bg-green-50"}`}>
                         <p className="text-xs text-gray-400 mb-1">현재가</p>
-                        <p className="text-2xl font-bold text-green-600">
+                        <p className={`text-2xl font-bold ${isWholesale ? "text-blue-600" : "text-green-600"}`}>
                             {weekly.currentPrice != null
                                 ? weekly.currentPrice.toLocaleString() : "-"}
                         </p>
-                        <p className="text-xs text-green-400">원</p>
+                        <p className={`text-xs ${isWholesale ? "text-blue-400" : "text-green-400"}`}>원</p>
                     </div>
-                    <div className="bg-blue-50 rounded-2xl p-4 text-center">
+                    <div className="bg-gray-50 rounded-2xl p-4 text-center">
                         <p className="text-xs text-gray-400 mb-1">7일 평균</p>
-                        <p className="text-2xl font-bold text-blue-600">
-                            {history.length > 0
-                                ? Math.round(
-                                    history.reduce((sum, d) => sum + (d.price ?? 0), 0) / history.length
-                                ).toLocaleString()
-                                : "-"}
+                        <p className="text-2xl font-bold text-gray-600">
+                            {avgPrice != null ? avgPrice.toLocaleString() : "-"}
                         </p>
-                        <p className="text-xs text-blue-400">원</p>
+                        <p className="text-xs text-gray-400">원</p>
                     </div>
                 </div>
             )}
@@ -244,22 +259,25 @@ function DetailPanel({ item, latest, weekly, onClose }) {
                 </div>
             )}
 
-            {/* 주간 바 차트 (7일 집계) */}
+            {/* 주간 바 차트 */}
             {history.length > 0 ? (
                 <div className="overflow-visible">
                     <h3 className="text-xs font-semibold text-gray-500 mb-3">📈 최근 7일 가격 추이</h3>
                     <div className="flex items-end gap-2 h-28 overflow-visible">
                         {history.map((d, i) => (
                             <div key={i} className="flex-1 flex flex-col items-center group relative">
-                                {/* 툴팁 */}
                                 <div className="hidden group-hover:flex flex-col items-center absolute bottom-full mb-1 bg-gray-800 text-white text-[10px] rounded-lg px-2 py-1 z-10 whitespace-nowrap">
                                     <span>{d.price?.toLocaleString()}원</span>
                                 </div>
                                 <div
                                     className={`w-full rounded-t-sm transition-colors ${
                                         i === history.length - 1
-                                            ? "bg-green-400 hover:bg-green-500"
-                                            : "bg-green-200 hover:bg-green-300"
+                                            ? isWholesale
+                                                ? "bg-blue-400 hover:bg-blue-500"
+                                                : "bg-green-400 hover:bg-green-500"
+                                            : isWholesale
+                                                ? "bg-blue-200 hover:bg-blue-300"
+                                                : "bg-green-200 hover:bg-green-300"
                                     }`}
                                     style={{ height: `${Math.max((d.price / max) * 96, 2)}px` }}
                                 />
@@ -282,9 +300,17 @@ function DetailPanel({ item, latest, weekly, onClose }) {
 // 메인 페이지
 function MarketPricePage() {
     const navigate = useNavigate();
+    const [marketType,     setMarketType]     = useState("RETAIL");
     const [selectedItem,   setSelectedItem]   = useState(null);
     const [selectedLatest, setSelectedLatest] = useState(null);
     const [selectedWeekly, setSelectedWeekly] = useState(null);
+
+    const handleTypeChange = (type) => {
+        setMarketType(type);
+        setSelectedItem(null);
+        setSelectedLatest(null);
+        setSelectedWeekly(null);
+    };
 
     const handleCardClick = (item, latest, weekly) => {
         if (selectedItem?.name === item.name) {
@@ -297,11 +323,37 @@ function MarketPricePage() {
     return (
         <div className="max-w-screen-xl mx-auto p-4 sm:p-6 flex flex-col gap-5">
             {/* 헤더 */}
-            <div className="flex items-center gap-3">
-                <button onClick={() => navigate("/")} className="text-gray-400 hover:text-gray-600 text-sm">← 홈</button>
-                <div>
-                    <h1 className="text-lg font-bold text-gray-800">🏪 농산물 시세</h1>
-                    <p className="text-xs text-gray-400 mt-0.5">매일 오전 6시 자동 업데이트 · KAMIS 공공데이터 기준</p>
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <button onClick={() => navigate("/")} className="text-gray-400 hover:text-gray-600 text-sm">← 홈</button>
+                    <div>
+                        <h1 className="text-lg font-bold text-gray-800">🏪 농산물 시세</h1>
+                        <p className="text-xs text-gray-400 mt-0.5">매일 오전 6시 자동 업데이트 · KAMIS 공공데이터 기준</p>
+                    </div>
+                </div>
+
+                {/* 소매/도매 토글 */}
+                <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+                    <button
+                        onClick={() => handleTypeChange("RETAIL")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                            marketType === "RETAIL"
+                                ? "bg-white text-green-600 shadow-sm"
+                                : "text-gray-400 hover:text-gray-600"
+                        }`}
+                    >
+                        🛒 소매가
+                    </button>
+                    <button
+                        onClick={() => handleTypeChange("WHOLESALE")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                            marketType === "WHOLESALE"
+                                ? "bg-white text-blue-600 shadow-sm"
+                                : "text-gray-400 hover:text-gray-600"
+                        }`}
+                    >
+                        🏭 도매가
+                    </button>
                 </div>
             </div>
 
@@ -310,8 +362,9 @@ function MarketPricePage() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 flex-grow">
                     {ITEMS.map(item => (
                         <PriceCard
-                            key={item.name}
+                            key={`${item.name}-${marketType}`}
                             item={item}
+                            marketType={marketType}
                             onClick={handleCardClick}
                             isSelected={selectedItem?.name === item.name}
                         />
@@ -322,6 +375,7 @@ function MarketPricePage() {
                         item={selectedItem}
                         latest={selectedLatest}
                         weekly={selectedWeekly}
+                        marketType={marketType}
                         onClose={() => {
                             setSelectedItem(null); setSelectedLatest(null); setSelectedWeekly(null);
                         }}
