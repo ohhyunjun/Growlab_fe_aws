@@ -17,25 +17,12 @@ const SPECIES_EMOJI = {
 };
 
 const SORT_OPTIONS = [
-    { key: "name", label: "이름순" },
+    { key: "name",   label: "이름순" },
     { key: "newest", label: "최신순" },
     { key: "oldest", label: "오래된순" },
 ];
 
-// ✅ localStorage에서 기기 대표 품종 가져오기
-const getDeviceSpecies = (serialNumber) => {
-    try {
-        const saved = localStorage.getItem(`device_species_${serialNumber}`);
-        return saved ? JSON.parse(saved) : null;
-    } catch { return null; }
-};
-
-// ✅ localStorage에 기기 대표 품종 저장
-const setDeviceSpecies = (serialNumber, speciesData) => {
-    localStorage.setItem(`device_species_${serialNumber}`, JSON.stringify(speciesData));
-};
-
-// ✅ sessionStorage에서 실시간 센서값 읽기 (MonitoringPage SSE가 저장한 값)
+// ✅ sessionStorage에서 실시간 센서값 읽기
 const getSensorData = (serialNumber) => {
     try {
         const saved = sessionStorage.getItem(`growlab_sensor_${serialNumber}`);
@@ -56,12 +43,10 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
 
     const portStatus = device.portStatus || "00000000";
 
-    // ✅ 이 기기의 대표 품종 (localStorage)
-    const deviceSpecies = getDeviceSpecies(device.serialNumber);
-    const speciesName = deviceSpecies?.speciesName || null;
+    // ✅ 서버 응답에서 직접 품종 정보 읽기 (localStorage 불필요)
+    const speciesName  = device.speciesName  || null;
     const speciesEmoji = speciesName ? (SPECIES_EMOJI[speciesName] || "🌱") : null;
 
-    // ✅ sessionStorage에서 실시간 센서값 읽기 (30초마다 갱신)
     const [sensor, setSensor] = useState(() => getSensorData(device.serialNumber));
 
     useEffect(() => {
@@ -71,11 +56,11 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
         return () => clearInterval(timer);
     }, [device.serialNumber]);
 
-    const temp      = sensor?.temperature        ?? null;
-    const humidity  = sensor?.humidity           ?? null;
-    const ph        = sensor?.ph                 ?? null;
-    const tds       = sensor?.tds                ?? null;
-    const waterOk   = sensor?.water_level_status ?? null; // boolean or null
+    const temp     = sensor?.temperature        ?? null;
+    const humidity = sensor?.humidity           ?? null;
+    const ph       = sensor?.ph                 ?? null;
+    const tds      = sensor?.tds                ?? null;
+    const waterOk  = sensor?.water_level_status ?? null;
 
     return (
         <div
@@ -101,8 +86,7 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    const hasActivePort = portStatus.includes("1");
-                                    if (hasActivePort) {
+                                    if (portStatus.includes("1")) {
                                         alert("포트가 켜져 있는 동안은 품종을 변경할 수 없어요.\n모든 포트를 OFF한 후 변경해주세요.");
                                         return;
                                     }
@@ -156,7 +140,7 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
                 })}
             </div>
 
-            {/* ✅ 센서 수치 — 정상범위 이탈 시 색상 표시 */}
+            {/* 센서 수치 */}
             <div className="grid grid-cols-3 gap-2 text-center">
                 {(() => {
                     const tempOk  = temp     !== null && temp     >= 18  && temp     <= 28;
@@ -164,51 +148,25 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
                     const phOk    = ph       !== null && ph       >= 5.5 && ph       <= 7.0;
                     const tdsOk   = tds      !== null && tds      >= 200 && tds      <= 800;
 
-                    const getColor = (hasData, isOk) => {
-                        if (!hasData) return "text-gray-300";
-                        return isOk ? "text-green-500" : "text-orange-400";
-                    };
-                    const getBg = (hasData, isOk) => {
-                        if (!hasData) return "bg-gray-50";
-                        return isOk ? "bg-green-50" : "bg-orange-50";
-                    };
+                    const getColor = (hasData, isOk) => !hasData ? "text-gray-300" : isOk ? "text-green-500" : "text-orange-400";
+                    const getBg    = (hasData, isOk) => !hasData ? "bg-gray-50"    : isOk ? "bg-green-50"   : "bg-orange-50";
 
                     return [
-                        {
-                            label: "온도",
-                            value: formatSensor(temp, "°C"),
-                            color: getColor(temp !== null, tempOk),
-                            bg: getBg(temp !== null, tempOk),
-                        },
-                        {
-                            label: "습도",
-                            value: formatSensor(humidity, "%"),
-                            color: getColor(humidity !== null, humidOk),
-                            bg: getBg(humidity !== null, humidOk),
-                        },
-                        {
-                            label: "pH",
-                            value: formatSensor(ph, ""),
-                            color: getColor(ph !== null, phOk),
-                            bg: getBg(ph !== null, phOk),
-                        },
-                        {
-                            label: "TDS",
-                            value: tds !== null ? `${Math.round(tds)}ppm` : "-",
-                            color: getColor(tds !== null, tdsOk),
-                            bg: getBg(tds !== null, tdsOk),
-                        },
+                        { label: "온도", value: formatSensor(temp, "°C"),                           color: getColor(temp     !== null, tempOk),  bg: getBg(temp     !== null, tempOk)  },
+                        { label: "습도", value: formatSensor(humidity, "%"),                         color: getColor(humidity !== null, humidOk), bg: getBg(humidity !== null, humidOk) },
+                        { label: "pH",   value: formatSensor(ph, ""),                               color: getColor(ph       !== null, phOk),    bg: getBg(ph       !== null, phOk)    },
+                        { label: "TDS",  value: tds !== null ? `${Math.round(tds)}ppm` : "-",       color: getColor(tds      !== null, tdsOk),   bg: getBg(tds      !== null, tdsOk)   },
                         {
                             label: "수위",
                             value: waterOk === null ? "-" : waterOk ? "정상" : "부족",
                             color: waterOk === null ? "text-gray-300" : waterOk ? "text-blue-500" : "text-red-400",
-                            bg: waterOk === null ? "bg-gray-50" : waterOk ? "bg-blue-50" : "bg-red-50",
+                            bg:    waterOk === null ? "bg-gray-50"    : waterOk ? "bg-blue-50"   : "bg-red-50",
                         },
                         {
                             label: "LED",
                             value: device.ledStatus ? "ON" : "OFF",
                             color: device.ledStatus ? "text-yellow-500" : "text-gray-400",
-                            bg: "bg-gray-50",
+                            bg:    "bg-gray-50",
                         },
                     ];
                 })().map(({ label, value, color, bg }) => (
@@ -223,10 +181,10 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
 }
 
 function HomePage() {
-    const [devices, setDevices] = useState([]);
+    const [devices, setDevices]       = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [showAddModal, setShowAddModal] = useState(false);
-    const [sortKey, setSortKey] = useState("name");
+    const [sortKey, setSortKey]       = useState("name");
     const [selectingSpeciesSerial, setSelectingSpeciesSerial] = useState(null);
 
     const navigate = useNavigate();
@@ -249,13 +207,12 @@ function HomePage() {
 
     const getSortedDevices = () => {
         const copy = [...devices];
-        if (sortKey === "name") return copy.sort((a, b) => a.deviceNickname.localeCompare(b.deviceNickname, "ko"));
+        if (sortKey === "name")   return copy.sort((a, b) => a.deviceNickname.localeCompare(b.deviceNickname, "ko"));
         if (sortKey === "newest") return copy.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         if (sortKey === "oldest") return copy.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
         return copy;
     };
 
-    // ✅ 전체 환경 요약 — sessionStorage 실시간값 기준으로 평균
     const getAverage = (deviceList, key) => {
         if (!deviceList || deviceList.length === 0) return "-";
         const values = deviceList
@@ -267,17 +224,14 @@ function HomePage() {
 
     const handleDelete = async (serialNumber) => {
         const device = devices.find(d => d.serialNumber === serialNumber);
-        const hasPlants = device?.plants?.length > 0;
-
-        if (hasPlants) {
+        if (device?.plants?.length > 0) {
             alert("기기에 등록된 식물이 있어요.\n각 포트를 OFF하여 식물을 먼저 해제한 후 삭제해주세요.");
             return;
         }
-
         if (!window.confirm("기기를 삭제할까요?")) return;
         try {
             await deleteDeviceApi(serialNumber);
-            localStorage.removeItem(`device_species_${serialNumber}`);
+            // ✅ device_species는 이제 localStorage에 없지만, 아이콘/설정은 여전히 로컬 보관
             localStorage.removeItem(`device_icon_${serialNumber}`);
             localStorage.removeItem(`device_settings_${serialNumber}`);
             setDevices(prev => prev.filter(d => d.serialNumber !== serialNumber));
@@ -288,8 +242,6 @@ function HomePage() {
     };
 
     const handlePortClick = async (device, portIndex, isCurrentlyOn) => {
-        const deviceSpecies = getDeviceSpecies(device.serialNumber);
-
         if (isCurrentlyOn) {
             const portPlant = device.plants?.find(p => p.portIndex === portIndex);
             if (portPlant) {
@@ -310,29 +262,30 @@ function HomePage() {
                 alert("포트 제어에 실패했습니다.");
             }
         } else {
-            if (!deviceSpecies) { alert("먼저 품종을 선택해주세요."); return; }
+            // ✅ 서버에서 받은 speciesId 사용
+            if (!device.speciesId) { alert("먼저 품종을 선택해주세요."); return; }
             try {
                 await createPlantApi({
-                    name: deviceSpecies.speciesName,
-                    speciesId: deviceSpecies.speciesId,
+                    name:        device.speciesName,
+                    speciesId:   device.speciesId,
                     serialNumber: device.serialNumber,
-                    portIndex: portIndex,
-                    plantStage: "SEED",
-                    plantedAt: new Date().toISOString(),
+                    portIndex,
+                    plantStage:  "SEED",
+                    plantedAt:   new Date().toISOString(),
                 });
                 await updatePortStatusApi(device.serialNumber, portIndex, true);
                 await fetchDevices();
             } catch (err) {
                 console.error(err);
-                alert("식물 등록에 실패했습니다. 이미 등록된 포트일 수 있어요.");
+                alert(err.response?.data?.message || "식물 등록에 실패했습니다.");
             }
         }
     };
 
-    const handleSpeciesSelected = (serialNumber, speciesId, speciesName) => {
-        setDeviceSpecies(serialNumber, { speciesId, speciesName });
+    // ✅ 품종 선택 완료 콜백 — 서버에 이미 저장됐으므로 fetchDevices만 호출
+    const handleSpeciesSelected = async () => {
         setSelectingSpeciesSerial(null);
-        fetchDevices();
+        await fetchDevices();
     };
 
     const handleOpenMonitoring = (serial, portIndex) => {
@@ -454,9 +407,7 @@ function HomePage() {
                     serialNumber={selectingSpeciesSerial}
                     portIndex={null}
                     onClose={() => setSelectingSpeciesSerial(null)}
-                    onSuccess={(speciesId, speciesName) =>
-                        handleSpeciesSelected(selectingSpeciesSerial, speciesId, speciesName)
-                    }
+                    onSuccess={handleSpeciesSelected}
                 />
             )}
         </div>

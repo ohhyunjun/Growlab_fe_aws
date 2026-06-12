@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { getAllSpeciesApi } from "../../api/speciesApi";
 import { createPlantApi } from "../../api/plantApi";
+import { updateDeviceSpeciesApi } from "../../api/deviceApi";
 
 const CATEGORY_FILTERS = ["전체", "채소", "과일"];
 
@@ -10,38 +11,38 @@ const CATEGORY_MAP = {
 };
 
 const SPECIES_EMOJI = {
-    "방울토마토": "🍅", 
-    "청상추":    "🥬", 
+    "방울토마토": "🍅",
+    "청상추":    "🥬",
     "적상추":    "🥬",
-    "딸기":      "🍓", 
+    "딸기":      "🍓",
     "파프리카":  "🌶️",
-    "풋고추":    "🌶️", 
+    "풋고추":    "🌶️",
     "블루베리":  "🫐",
-    "시금치":    "🥬", 
-    "토마토":    "🍅", 
-    "오이":      "🥒", 
-    "피망":      "🫑", 
+    "시금치":    "🥬",
+    "토마토":    "🍅",
+    "오이":      "🥒",
+    "피망":      "🫑",
     "깻잎":      "🍃"
 };
 
 const DIFFICULTY_LABEL = { EASY: "쉬움", NORMAL: "보통", HARD: "어려움" };
 const DIFFICULTY_COLOR = {
-    EASY: "bg-green-100 text-green-700",
+    EASY:   "bg-green-100 text-green-700",
     NORMAL: "bg-yellow-100 text-yellow-700",
-    HARD: "bg-red-100 text-red-600",
+    HARD:   "bg-red-100 text-red-600",
 };
 
 function SelectPlantModal({ serialNumber, portIndex, onClose, onSuccess }) {
-    const [species, setSpecies] = useState([]);
-    const [selected, setSelected] = useState(null);
-    const [search, setSearch] = useState("");
-    const [category, setCategory] = useState("전체");
-    const [plantName, setPlantName] = useState("");
-    const [loading, setLoading] = useState(false);
+    const [species, setSpecies]         = useState([]);
+    const [selected, setSelected]       = useState(null);
+    const [search, setSearch]           = useState("");
+    const [category, setCategory]       = useState("전체");
+    const [plantName, setPlantName]     = useState("");
+    const [loading, setLoading]         = useState(false);
     const [fetchLoading, setFetchLoading] = useState(true);
-    const [error, setError] = useState("");
+    const [error, setError]             = useState("");
 
-    // ✅ portIndex가 null이면 품종 선택 전용 모드
+    // portIndex が null/undefined → 기기 품종 선택 전용 모드
     const isSpeciesOnlyMode = portIndex === null || portIndex === undefined;
 
     useEffect(() => {
@@ -58,7 +59,7 @@ function SelectPlantModal({ serialNumber, portIndex, onClose, onSuccess }) {
     };
 
     const filtered = species.filter(sp => {
-        const matchSearch = (sp.name || "").includes(search);
+        const matchSearch   = (sp.name || "").includes(search);
         const matchCategory = category === "전체" || sp.category === CATEGORY_MAP[category];
         return matchSearch && matchCategory;
     });
@@ -75,20 +76,21 @@ function SelectPlantModal({ serialNumber, portIndex, onClose, onSuccess }) {
 
         try {
             if (isSpeciesOnlyMode) {
-                // ✅ 품종 선택 모드: API 호출 없이 선택한 품종 정보만 콜백으로 전달
+                // ✅ 품종 선택 모드: DB에 기기 대표 품종 저장 후 콜백
+                await updateDeviceSpeciesApi(serialNumber, selected.id);
                 onSuccess(selected.id, selected.name || selected.koreanName);
                 onClose();
             } else {
-                // ✅ 포트 등록 모드: 기존대로 createPlantApi 호출
+                // 포트 등록 모드: 기존대로 식물 생성
                 await createPlantApi({
-                    name: plantName.trim(),
-                    plantStage: "SEED",
-                    plantedAt: new Date().toISOString(),
+                    name:        plantName.trim(),
+                    plantStage:  "SEED",
+                    plantedAt:   new Date().toISOString(),
                     germinatedAt: null,
-                    maturedAt: null,
-                    speciesId: selected.id,
-                    serialNumber: serialNumber,
-                    portIndex: portIndex,
+                    maturedAt:   null,
+                    speciesId:   selected.id,
+                    serialNumber,
+                    portIndex,
                 });
                 onSuccess();
                 onClose();
@@ -97,7 +99,7 @@ function SelectPlantModal({ serialNumber, portIndex, onClose, onSuccess }) {
             setError(
                 err.response?.data?.message ||
                 err.response?.data ||
-                "식물 등록에 실패했습니다."
+                "처리에 실패했습니다."
             );
         } finally {
             setLoading(false);
@@ -114,7 +116,6 @@ function SelectPlantModal({ serialNumber, portIndex, onClose, onSuccess }) {
                 <div className="flex-shrink-0 flex items-center gap-3 px-5 py-4 border-b border-gray-100">
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">←</button>
                     <h2 className="text-base font-bold text-gray-800">식물 선택</h2>
-                    {/* ✅ 품종 선택 모드일 때 안내 문구 */}
                     {isSpeciesOnlyMode && (
                         <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
                             이 기기의 재배 품종을 선택하세요
@@ -156,9 +157,7 @@ function SelectPlantModal({ serialNumber, portIndex, onClose, onSuccess }) {
                                 >
                                     {cat === "전체" && "🌿 "}
                                     {cat === "채소" && "🥬 "}
-                                    {cat === "허브" && "🌿 "}
                                     {cat === "과일" && "🍓 "}
-                                    {cat === "관상식물" && "🌸 "}
                                     {cat}
                                 </button>
                             ))}
@@ -178,9 +177,9 @@ function SelectPlantModal({ serialNumber, portIndex, onClose, onSuccess }) {
                             ) : (
                                 <div className="grid grid-cols-3 gap-3">
                                     {filtered.map(sp => {
-                                        const emoji = SPECIES_EMOJI[sp.name || sp.koreanName] || "🌱";
+                                        const emoji      = SPECIES_EMOJI[sp.name || sp.koreanName] || "🌱";
                                         const isSelected = selected?.id === sp.id;
-                                        const diffKey = sp.difficulty || "NORMAL";
+                                        const diffKey    = sp.difficulty || "NORMAL";
                                         return (
                                             <button
                                                 key={sp.id}
@@ -266,7 +265,7 @@ function SelectPlantModal({ serialNumber, portIndex, onClose, onSuccess }) {
                                     )}
                                 </div>
 
-                                {/* ✅ 품종 선택 모드일 때는 이름 입력란 숨김 */}
+                                {/* 포트 등록 모드일 때만 이름 입력 */}
                                 {!isSpeciesOnlyMode && (
                                     <div>
                                         <label className="block text-xs font-medium text-gray-600 mb-1">내 식물 이름</label>
@@ -291,7 +290,11 @@ function SelectPlantModal({ serialNumber, portIndex, onClose, onSuccess }) {
                                     disabled={loading}
                                     className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-medium py-3 rounded-xl text-sm transition-colors"
                                 >
-                                    {loading ? "처리 중..." : isSpeciesOnlyMode ? "이 품종으로 설정!" : "이 식물로 재배 시작!"}
+                                    {loading
+                                        ? "처리 중..."
+                                        : isSpeciesOnlyMode
+                                            ? "이 품종으로 설정!"
+                                            : "이 식물로 재배 시작!"}
                                 </button>
                             </div>
                         )}
