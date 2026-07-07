@@ -1,23 +1,21 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_ORIGIN } from '../../api/config';
+import { assetUrl } from '../../api/config';
 
 const ArticlePostCard = ({ post }) => {
   const navigate = useNavigate();
-  const SERVER_URL = API_ORIGIN;
 
   // 이미지 경로 보정 함수
   const getFormattedImageUrl = (url) => {
     if (!url) return null;
-    if (url.startsWith('http')) return url;
-    
+    if (/^https?:\/\//i.test(url)) return url;
     let correctedPath = url.replace('/api/files/', '/uploads/');
     const parts = correctedPath.split('/');
     const fileName = parts.pop();
     const path = parts.join('/');
     const finalPath = path.startsWith('/') ? path : `/${path}`;
     
-    return `${SERVER_URL}${finalPath}/${encodeURIComponent(fileName)}`;
+    return assetUrl(`${finalPath}/${encodeURIComponent(fileName)}`);
   };
 
   return (

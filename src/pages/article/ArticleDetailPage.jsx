@@ -10,14 +10,13 @@ import {
   deleteCommentApi,
   updateCommentApi
 } from '../../api/articleApi';
-import { API_ORIGIN } from '../../api/config';
+import { assetUrl } from '../../api/config';
 
 const ArticleDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [post, setPost] = useState(null);
   const [comment, setComment] = useState("");
-  const SERVER_URL = API_ORIGIN;
 
   const [isOpen, setIsOpen] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);
@@ -38,12 +37,12 @@ const ArticleDetailPage = () => {
 
   const getFormattedImageUrl = (url) => {
     if (!url) return null;
-    if (url.startsWith('http')) return url;
+    if (/^https?:\/\//i.test(url)) return url;
     let correctedPath = url.replace('/api/files/', '/uploads/');
     const parts = correctedPath.split('/');
     const fileName = parts.pop();
     const path = parts.join('/');
-    return `${SERVER_URL}${path.startsWith('/') ? path : '/' + path}/${encodeURIComponent(fileName)}`;
+    return assetUrl(`${path.startsWith('/') ? path : '/' + path}/${encodeURIComponent(fileName)}`);
   };
 
   const handleLike = async () => {

@@ -15,6 +15,6 @@ export const postRealtimeSensorApi = (data) =>
 export const postHourlySensorApi = (data) =>
     axios.post(API_BASE, data, authHeader());
 
-// SSE 구독 URL 반환 (EventSource는 헤더 불가, URL만 반환)
-export const getSseStreamUrl = (serialNumber) =>
-    `${API_BASE}/stream/${serialNumber}`;
+// AWS API Gateway는 SSE 롱커넥션에 취약하므로 배포판은 최신값 폴링을 사용합니다.
+export const getLatestSensorApi = (serialNumber) =>
+    axios.get(`${API_BASE}/latest/${serialNumber}`, authHeader());

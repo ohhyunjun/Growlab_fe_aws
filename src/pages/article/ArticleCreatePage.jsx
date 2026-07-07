@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { createArticleApi, getArticleDetailApi, updateArticleApi } from '../../api/articleApi';
-import { API_ORIGIN } from '../../api/config';
+import { assetUrl } from '../../api/config';
 
 const ArticleCreatePage = () => {
   const navigate = useNavigate();
@@ -15,8 +15,6 @@ const ArticleCreatePage = () => {
   const [previews, setPreviews] = useState([]);
   const [existingImages, setExistingImages] = useState([]);
   const [deleteImageIds, setDeleteImageIds] = useState([]);
-
-  const SERVER_URL = API_ORIGIN;
 
   useEffect(() => { if (isEditMode) fetchPostDetail(); }, [id]);
 
@@ -32,7 +30,7 @@ const ArticleCreatePage = () => {
           let url = img.imgUrl || img.imageUrl || "";
           if (url && !url.startsWith('http')) {
             const correctedPath = url.replace('/api/files/', '/uploads/');
-            url = `${SERVER_URL}${correctedPath.startsWith('/') ? correctedPath : '/' + correctedPath}`;
+            url = assetUrl(correctedPath);
           }
           return { id: img.id, url };
         });

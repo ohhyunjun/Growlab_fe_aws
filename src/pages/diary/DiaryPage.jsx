@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { getPlantsApi, getDiariesApi, createDiaryApi, updateDiaryApi, deleteDiaryApi } from "../../api/diaryApi";
-import { API_ORIGIN } from "../../api/config";
+import { assetUrl } from "../../api/config";
 
 const SPECIES_EMOJI = {
     "방울토마토": "🍅", "청상추": "🥬", "적상추": "🥬",
@@ -145,7 +145,7 @@ function DiaryPage() {
             targetDate: diary.targetDate?.slice(0, 10) || "",
         });
         setImageFiles([]);
-        setImagePreviews(diary.imageUrls?.map(url => `${API_ORIGIN}${url}`) || []);
+        setImagePreviews(diary.imageUrls?.map(assetUrl) || []);
         setSelectedDiary(null);
         setShowForm(true);
         setShowList(false);
@@ -374,7 +374,7 @@ function DiaryPage() {
                                 {selectedDiary.imageUrls?.length > 0 && (
                                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                         {selectedDiary.imageUrls.map((url, idx) => (
-                                            <img key={idx} src={`${API_ORIGIN}${url}`} alt={`일지 사진 ${idx + 1}`}
+                                            <img key={idx} src={assetUrl(url)} alt={`일지 사진 ${idx + 1}`}
                                                 className="w-full aspect-square object-cover rounded-lg border border-gray-100" />
                                         ))}
                                     </div>

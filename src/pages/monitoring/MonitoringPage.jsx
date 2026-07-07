@@ -1,8 +1,8 @@
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { getUserDevicesApi, updateLedApi, updatePhotoIntervalApi } from "../../api/deviceApi";
 import { getAllNoticesApi } from "../../api/noticeApi";
-import { getSseStreamUrl } from "../../api/sensorApi";
+import { getLatestSensorApi } from "../../api/sensorApi";
 import { getLatestPredictionApi } from "../../api/predictionApi";
 import { API_BASE } from "../../api/config";
 
@@ -529,8 +529,6 @@ function MonitoringPage() {
     });
 
     const [sseConnected, setSseConnected] = useState(false);
-    const sseRef = useRef(null);
-    const reconnectTimerRef = useRef(null);
 
     const [notices, setNotices] = useState(() => {
         try {
@@ -640,15 +638,19 @@ function MonitoringPage() {
             .catch(() => setPrediction(null));
     }, [device, selectedPort]);
 
-    // ── 3. SSE 연결
-    const connectSSE = useCallback(() => {
-        if (sseRef.current) { sseRef.current.close(); sseRef.current = null; }
-        const es = new EventSource(getSseStreamUrl(serialNumber));
-        sseRef.current = es;
-        es.addEventListener("connect", () => setSseConnected(true));
-        es.addEventListener("sensor", (e) => {
+    // ── 3. 센서 최신값 폴링
+    useEffect(() => {
+        let cancelled = false;
+
+        const pollLatestSensor = async () => {
             try {
-                const data = JSON.parse(e.data);
+                const res = await getLatestSensorApi(serialNumber);
+                if (cancelled) return;
+                if (res.status === 204 || !res.data) {
+                    setSseConnected(true);
+                    return;
+                }
+                const data = res.data;
                 setSensorData(prev => {
                     const next = {
                         temperature:        data.temperature        ?? prev.temperature,
@@ -661,23 +663,21 @@ function MonitoringPage() {
                     return next;
                 });
                 setSseConnected(true);
-            } catch (err) { console.error("[SSE] parse error", err); }
-        });
-        es.onerror = () => {
-            setSseConnected(false);
-            es.close();
-            sseRef.current = null;
-            reconnectTimerRef.current = setTimeout(connectSSE, 5000);
+            } catch (err) {
+                if (!cancelled) {
+                    setSseConnected(false);
+                    console.error("[Sensor poll]", err);
+                }
+            }
+        };
+
+        pollLatestSensor();
+        const timer = setInterval(pollLatestSensor, 3000);
+        return () => {
+            cancelled = true;
+            clearInterval(timer);
         };
     }, [serialNumber]);
-
-    useEffect(() => {
-        connectSSE();
-        return () => {
-            if (sseRef.current) sseRef.current.close();
-            if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-        };
-    }, [connectSSE]);
 
     // ── 4. 알림 폴링
     useEffect(() => {

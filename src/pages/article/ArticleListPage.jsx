@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getArticlesApi } from '../../api/articleApi';
-import { API_ORIGIN } from '../../api/config';
+import { assetUrl } from '../../api/config';
 
 const ArticleListPage = () => {
   const navigate = useNavigate();
@@ -11,7 +11,6 @@ const ArticleListPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showSidebar, setShowSidebar] = useState(false); // ✅ 모바일 사이드바 토글
   const postsPerPage = 10;
-  const SERVER_URL = API_ORIGIN;
 
   useEffect(() => { fetchPosts(); }, []);
   useEffect(() => { setCurrentPage(1); }, [currentCategory]);
@@ -34,7 +33,7 @@ const ArticleListPage = () => {
     const pathParts = correctedPath.split('/');
     const fileName = pathParts.pop();
     const directoryPath = pathParts.join('/');
-    return `${SERVER_URL}${directoryPath}/${encodeURIComponent(fileName)}`;
+    return assetUrl(`${directoryPath}/${encodeURIComponent(fileName)}`);
   };
 
   const filteredPosts = posts.filter(post => {
