@@ -1,4 +1,5 @@
 import axios from "axios";
+import { API_BASE } from "./config";
 
 const authHeader = () => ({
     headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
@@ -8,7 +9,7 @@ export const createPlantApi = async (plantData) => {
     const token = localStorage.getItem("token");
 
     return await axios.post(
-        "http://localhost:8080/api/plants",
+        `${API_BASE}/plants`,
         plantData,
         {
             headers: {
@@ -19,4 +20,4 @@ export const createPlantApi = async (plantData) => {
 };
 
 export const deletePlantApi = (plantId) =>
-    axios.delete(`http://localhost:8080/api/plants/${plantId}`, authHeader());
+    axios.delete(`${API_BASE}/plants/${plantId}`, authHeader());

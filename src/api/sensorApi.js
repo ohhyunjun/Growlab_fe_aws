@@ -1,6 +1,7 @@
 import axios from "axios";
+import { API_BASE as BASE_API_URL } from "./config";
 
-const API_BASE = "http://localhost:8080/api/sensor_logs";
+const API_BASE = `${BASE_API_URL}/sensor_logs`;
 
 const authHeader = () => ({
     headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
@@ -16,4 +17,4 @@ export const postHourlySensorApi = (data) =>
 
 // SSE 구독 URL 반환 (EventSource는 헤더 불가, URL만 반환)
 export const getSseStreamUrl = (serialNumber) =>
-    `http://localhost:8080/api/sensor_logs/stream/${serialNumber}`;
+    `${API_BASE}/stream/${serialNumber}`;

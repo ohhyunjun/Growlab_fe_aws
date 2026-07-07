@@ -4,6 +4,7 @@ import { getUserDevicesApi, updateLedApi, updatePhotoIntervalApi } from "../../a
 import { getAllNoticesApi } from "../../api/noticeApi";
 import { getSseStreamUrl } from "../../api/sensorApi";
 import { getLatestPredictionApi } from "../../api/predictionApi";
+import { API_BASE } from "../../api/config";
 
 const SPECIES_EMOJI = {
     "방울토마토": "🍅", "청상추": "🥬", "적상추": "🥬",
@@ -31,7 +32,7 @@ const fetchAiData = async (deviceData, plantData) => {
         const daysSincePlanted = plantData?.plantedAt
             ? Math.floor((new Date() - new Date(plantData.plantedAt)) / (1000 * 60 * 60 * 24))
             : null;
-        const response = await fetch("http://localhost:8080/api/ai/advice", {
+        const response = await fetch(`${API_BASE}/ai/advice`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
             body: JSON.stringify({

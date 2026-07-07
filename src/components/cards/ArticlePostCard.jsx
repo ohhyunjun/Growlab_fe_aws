@@ -1,9 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_ORIGIN } from '../../api/config';
 
 const ArticlePostCard = ({ post }) => {
   const navigate = useNavigate();
-  const SERVER_URL = "http://localhost:8080";
+  const SERVER_URL = API_ORIGIN;
 
   // 이미지 경로 보정 함수
   const getFormattedImageUrl = (url) => {

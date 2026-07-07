@@ -1,10 +1,9 @@
 import axios from "axios";
-
-const BASE_URL = "http://localhost:8080/api";
+import { API_BASE } from "./config";
 
 // 1. 인터셉터가 적용될 전용 인스턴스 생성
 const api = axios.create({
-    baseURL: BASE_URL,
+    baseURL: API_BASE,
     withCredentials: true
 });
 

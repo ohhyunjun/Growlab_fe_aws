@@ -10,13 +10,14 @@ import {
   deleteCommentApi,
   updateCommentApi
 } from '../../api/articleApi';
+import { API_ORIGIN } from '../../api/config';
 
 const ArticleDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [post, setPost] = useState(null);
   const [comment, setComment] = useState("");
-  const SERVER_URL = "http://localhost:8080";
+  const SERVER_URL = API_ORIGIN;
 
   const [isOpen, setIsOpen] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);

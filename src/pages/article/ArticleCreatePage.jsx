@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { createArticleApi, getArticleDetailApi, updateArticleApi } from '../../api/articleApi';
+import { API_ORIGIN } from '../../api/config';
 
 const ArticleCreatePage = () => {
   const navigate = useNavigate();
@@ -15,7 +16,7 @@ const ArticleCreatePage = () => {
   const [existingImages, setExistingImages] = useState([]);
   const [deleteImageIds, setDeleteImageIds] = useState([]);
 
-  const SERVER_URL = "http://localhost:8080";
+  const SERVER_URL = API_ORIGIN;
 
   useEffect(() => { if (isEditMode) fetchPostDetail(); }, [id]);
 
