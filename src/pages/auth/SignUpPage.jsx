@@ -45,6 +45,10 @@ function SignUpPage() {
             setError("비밀번호는 8자에서 20자까지 입력해주세요.");
             return;
         }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+            setError("유효한 이메일 형식이 아닙니다.");
+            return;
+        }
 
         setLoading(true);
         try {
