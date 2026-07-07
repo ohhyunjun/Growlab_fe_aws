@@ -13,8 +13,6 @@ api.interceptors.request.use((config) => {
     
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
-        
-        console.log("인터셉터 작동 중! 전송될 헤더:", config.headers.Authorization);
     } else {
         console.warn("⚠️ 로컬 스토리지에 토큰이 없습니다!");
     }

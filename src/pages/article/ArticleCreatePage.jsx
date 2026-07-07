@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { createArticleApi, getArticleDetailApi, updateArticleApi } from '../../api/articleApi';
 import { assetUrl } from '../../api/config';
+import { compressImageFiles } from '../../utils/imageCompression';
 
 const ArticleCreatePage = () => {
   const navigate = useNavigate();
@@ -43,12 +44,19 @@ const ArticleCreatePage = () => {
     }
   };
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const selectedFiles = Array.from(e.target.files);
     if (!selectedFiles.length) return;
-    setFiles(prev => [...prev, ...selectedFiles]);
-    setPreviews(prev => [...prev, ...selectedFiles.map(f => URL.createObjectURL(f))]);
-    e.target.value = "";
+    try {
+      const compressedFiles = await compressImageFiles(selectedFiles);
+      setFiles(prev => [...prev, ...compressedFiles]);
+      setPreviews(prev => [...prev, ...compressedFiles.map(f => URL.createObjectURL(f))]);
+    } catch (error) {
+      console.error("이미지 압축 실패:", error);
+      alert("이미지 처리 중 오류가 발생했습니다.");
+    } finally {
+      e.target.value = "";
+    }
   };
 
   const handleRemoveFile = (index) => {

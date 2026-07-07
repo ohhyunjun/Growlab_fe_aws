@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { getPlantsApi, getDiariesApi, createDiaryApi, updateDiaryApi, deleteDiaryApi } from "../../api/diaryApi";
 import { assetUrl } from "../../api/config";
+import { compressImageFiles } from "../../utils/imageCompression";
 
 const SPECIES_EMOJI = {
     "방울토마토": "🍅", "청상추": "🥬", "적상추": "🥬",
@@ -91,11 +92,19 @@ function DiaryPage() {
         finally { setLoading(false); }
     };
 
-    const handleImageChange = (e) => {
+    const handleImageChange = async (e) => {
         const files = Array.from(e.target.files);
         if (!files.length) return;
-        setImageFiles(prev => [...prev, ...files]);
-        setImagePreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
+        try {
+            const compressedFiles = await compressImageFiles(files);
+            setImageFiles(prev => [...prev, ...compressedFiles]);
+            setImagePreviews(prev => [...prev, ...compressedFiles.map(f => URL.createObjectURL(f))]);
+        } catch (err) {
+            console.error("이미지 압축 실패:", err);
+            setError("이미지 처리 중 오류가 발생했습니다.");
+        } finally {
+            e.target.value = "";
+        }
     };
 
     const removeImage = (idx) => {
