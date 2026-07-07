@@ -641,8 +641,10 @@ function MonitoringPage() {
     // ── 3. 센서 최신값 폴링
     useEffect(() => {
         let cancelled = false;
+        let timer = null;
 
         const pollLatestSensor = async () => {
+            if (document.hidden) return;
             try {
                 const res = await getLatestSensorApi(serialNumber);
                 if (cancelled) return;
@@ -671,11 +673,33 @@ function MonitoringPage() {
             }
         };
 
-        pollLatestSensor();
-        const timer = setInterval(pollLatestSensor, 60000);
+        const startPolling = () => {
+            if (timer || document.hidden) return;
+            pollLatestSensor();
+            timer = setInterval(pollLatestSensor, 60000);
+        };
+
+        const stopPolling = () => {
+            if (!timer) return;
+            clearInterval(timer);
+            timer = null;
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.hidden) {
+                stopPolling();
+            } else {
+                startPolling();
+            }
+        };
+
+        startPolling();
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
         return () => {
             cancelled = true;
-            clearInterval(timer);
+            stopPolling();
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
         };
     }, [serialNumber]);
 
