@@ -672,7 +672,7 @@ function MonitoringPage() {
         };
 
         pollLatestSensor();
-        const timer = setInterval(pollLatestSensor, 3000);
+        const timer = setInterval(pollLatestSensor, 60000);
         return () => {
             cancelled = true;
             clearInterval(timer);
