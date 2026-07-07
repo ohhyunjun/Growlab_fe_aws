@@ -9,6 +9,22 @@ function SignUpPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
+    const getSignupErrorMessage = (err) => {
+        const data = err.response?.data;
+        if (typeof data === "string") return data;
+        if (data?.message) return data.message;
+        if (data?.detail) return data.detail;
+        if (data?.errors && typeof data.errors === "object") {
+            return Object.values(data.errors).flat().join("\n");
+        }
+        if (data && typeof data === "object") {
+            return Object.values(data)
+                .filter(value => typeof value === "string")
+                .join("\n") || "입력값을 다시 확인해주세요.";
+        }
+        return "회원가입 중 오류가 발생했습니다.";
+    };
+
     const handleChange = (e) => {
         setForm({ ...form, [e.target.name]: e.target.value });
     };
@@ -21,13 +37,21 @@ function SignUpPage() {
             setError("비밀번호가 일치하지 않습니다.");
             return;
         }
+        if (form.username.length < 4 || form.username.length > 20) {
+            setError("아이디는 4자에서 20자까지 입력해주세요.");
+            return;
+        }
+        if (form.password.length < 8 || form.password.length > 20) {
+            setError("비밀번호는 8자에서 20자까지 입력해주세요.");
+            return;
+        }
 
         setLoading(true);
         try {
             await signupApi(form.username, form.email, form.password);
             navigate("/login");
         } catch (err) {
-            setError(err.response?.data?.message || err.response?.data || "회원가입 중 오류가 발생했습니다.");
+            setError(getSignupErrorMessage(err));
         } finally {
             setLoading(false);
         }
