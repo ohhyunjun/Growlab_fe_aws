@@ -32,7 +32,11 @@ export const updateDeviceSpeciesApi = (serialNumber, speciesId) =>
 // ✅ 관리자 전용 API (ROLE_ADMIN 필요)
 // ────────────────────────────────
 
-// 관리자가 유효한 시리얼 번호를 미리 등록 (사용자가 이 시리얼로만 내 기기 등록 가능)
+ // 전체 기기(시리얼) 목록 조회 - 배정/미배정 모두 포함
+export const getAllDevicesAdminApi = () =>
+    axios.get(`${API_BASE}/admin`, authHeader());
+
+// 관리자가 유효한 시리얼 번호를 미리 등록
 export const adminCreateDeviceApi = (serialNumber) =>
     axios.post(API_BASE, { serialNumber }, authHeader());
 
