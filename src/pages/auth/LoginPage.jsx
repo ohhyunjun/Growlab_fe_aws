@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { loginApi } from "../../api/authApi";
-import greenhouseBg from "../../assets/background.png";
 
 function LoginPage() {
     const navigate = useNavigate();
@@ -22,6 +21,7 @@ function LoginPage() {
             localStorage.setItem("token", res.data.accessToken);
             localStorage.setItem("username", res.data.username);
             localStorage.setItem("userId", res.data.userId);
+            localStorage.setItem("role", res.data.role);
             navigate("/");
         } catch (err) {
             setError("아이디 또는 비밀번호가 올바르지 않습니다.");
@@ -31,51 +31,22 @@ function LoginPage() {
     };
 
     return (
-        <div className="relative w-full min-h-screen overflow-hidden flex items-center justify-center">
-
-            {/* ✅ 배경 이미지 */}
-            <div
-                className="absolute inset-0"
-                style={{
-                    backgroundImage: `url(${greenhouseBg})`,
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                    backgroundRepeat: "no-repeat",
-                    filter: "blur(4px)",
-                }}
-            />
-
-            {/* ✅ 밝은 오버레이 */}
-            <div className="absolute inset-0 bg-white/20" />
-
-            {/* ✅ 로그인 카드 */}
-            <div className="relative z-10 bg-white/88 backdrop-blur-md rounded-2xl border border-white/70 shadow-2xl w-full max-w-md p-8">
-
+        <div className="min-h-[80vh] flex items-center justify-center">
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm w-full max-w-md p-8">
                 <div className="text-center mb-8">
                     <div className="text-3xl mb-2">🌱</div>
-
-                    <h1 className="text-2xl font-bold text-gray-800">
-                        GrowLab
-                    </h1>
-
-                    <p className="text-sm text-gray-400 mt-1">
-                        스마트팜 관리 플랫폼
-                    </p>
+                    <h1 className="text-2xl font-bold text-gray-800">GrowLab</h1>
+                    <p className="text-sm text-gray-400 mt-1">스마트팜 관리 플랫폼</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-
                     {error && (
                         <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2">
                             {error}
                         </div>
                     )}
-
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            아이디
-                        </label>
-
+                        <label className="block text-sm font-medium text-gray-700 mb-1">아이디</label>
                         <input
                             type="text"
                             name="username"
@@ -83,15 +54,11 @@ function LoginPage() {
                             onChange={handleChange}
                             placeholder="아이디를 입력하세요"
                             required
-                            className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-white/80 focus:outline-none focus:ring-2 focus:ring-green-400"
+                            className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                         />
                     </div>
-
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            비밀번호
-                        </label>
-
+                        <label className="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
                         <input
                             type="password"
                             name="password"
@@ -99,10 +66,9 @@ function LoginPage() {
                             onChange={handleChange}
                             placeholder="비밀번호를 입력하세요"
                             required
-                            className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-white/80 focus:outline-none focus:ring-2 focus:ring-green-400"
+                            className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                         />
                     </div>
-
                     <button
                         type="submit"
                         disabled={loading}
@@ -114,10 +80,7 @@ function LoginPage() {
 
                 <p className="text-center text-sm text-gray-400 mt-6">
                     계정이 없으신가요?{" "}
-                    <Link
-                        to="/signup"
-                        className="text-green-600 font-medium hover:underline"
-                    >
+                    <Link to="/signup" className="text-green-600 font-medium hover:underline">
                         회원가입
                     </Link>
                 </p>
