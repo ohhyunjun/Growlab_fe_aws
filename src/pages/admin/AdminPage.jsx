@@ -104,7 +104,6 @@ function AdminPage() {
             const q = search.trim().toLowerCase();
             const matchesSearch = !q ||
                 d.serialNumber?.toLowerCase().includes(q) ||
-                d.deviceNickname?.toLowerCase().includes(q) ||
                 d.ownerUsername?.toLowerCase().includes(q);
 
             return matchesFilter && matchesSearch;
@@ -188,7 +187,7 @@ function AdminPage() {
                             type="text"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            placeholder="시리얼, 닉네임, 소유자 검색..."
+                            placeholder="시리얼, 소유자 검색..."
                             className="flex-1 sm:flex-none border border-gray-200 rounded-lg px-3 py-1.5 text-xs sm:w-48 focus:outline-none focus:ring-2 focus:ring-green-400"
                         />
                         <button onClick={fetchDevices} className="text-xs text-gray-400 hover:text-green-600 px-2 py-1.5 border border-gray-200 rounded-lg whitespace-nowrap">
@@ -228,7 +227,6 @@ function AdminPage() {
                             <thead className={isScrollable ? "sticky top-0 bg-white z-10" : ""}>
                                 <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
                                     <th className="py-2 pr-2 font-medium">시리얼 번호</th>
-                                    <th className="py-2 pr-2 font-medium">닉네임</th>
                                     <th className="py-2 pr-2 font-medium">상태</th>
                                     <th className="py-2 pr-2 font-medium">소유자</th>
                                     <th className="py-2 pr-2 font-medium">등록일</th>
@@ -239,7 +237,6 @@ function AdminPage() {
                                 {filtered.map(d => (
                                     <tr key={d.serialNumber} className="hover:bg-gray-50/50">
                                         <td className="py-3 pr-2 font-medium text-gray-700">{d.serialNumber}</td>
-                                        <td className="py-3 pr-2 text-gray-500">{d.deviceNickname || "-"}</td>
                                         <td className="py-3 pr-2">
                                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                                                 d.registered ? "bg-green-100 text-green-600" : "bg-yellow-100 text-yellow-600"
