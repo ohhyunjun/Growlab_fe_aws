@@ -27,3 +27,15 @@ export const updatePhotoIntervalApi = (serialNumber, photoInterval) =>
 // ✅ 기기 대표 품종 설정/변경 - PATCH /api/devices/{serialNumber}/species
 export const updateDeviceSpeciesApi = (serialNumber, speciesId) =>
     axios.patch(`${API_BASE}/${serialNumber}/species`, { speciesId }, authHeader());
+
+// ────────────────────────────────
+// ✅ 관리자 전용 API (ROLE_ADMIN 필요)
+// ────────────────────────────────
+
+// 관리자가 유효한 시리얼 번호를 미리 등록 (사용자가 이 시리얼로만 내 기기 등록 가능)
+export const adminCreateDeviceApi = (serialNumber) =>
+    axios.post(API_BASE, { serialNumber }, authHeader());
+
+// 관리자가 기기를 완전히 삭제 (소유자 상관없이)
+export const adminDeleteDeviceApi = (serialNumber) =>
+    axios.delete(`${API_BASE}/admin/${serialNumber}`, authHeader());
