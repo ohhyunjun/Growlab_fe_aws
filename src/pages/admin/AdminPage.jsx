@@ -11,6 +11,11 @@ import {
     updateSpeciesApi,
     deleteSpeciesApi,
 } from "../../api/speciesApi";
+import {
+    getAllUsersAdminApi,
+    adminDeleteUserApi,
+    adminUpdateUserRoleApi,
+} from "../../api/userApi";
 
 const FILTERS = [
     { key: "all", label: "전체" },
@@ -42,8 +47,15 @@ const EMPTY_SPECIES_FORM = {
     aiPromptGuideline: "",
 };
 
+const ROLE_FILTERS = [
+    { key: "all", label: "전체" },
+    { key: "ROLE_ADMIN", label: "관리자" },
+    { key: "ROLE_USER", label: "일반회원" },
+];
+
 function AdminPage() {
     const navigate = useNavigate();
+    const myUsername = localStorage.getItem("username");
 
     // ────────────────────────────────
     // 기기 시리얼 관리
@@ -72,9 +84,17 @@ function AdminPage() {
     const [speciesCreateLoading, setSpeciesCreateLoading] = useState(false);
     const [speciesCreateError, setSpeciesCreateError] = useState("");
     const [speciesCreateMessage, setSpeciesCreateMessage] = useState("");
-
-    // ✅ 수정 모드 여부 (null이면 등록 모드, 값이 있으면 해당 id 수정 모드)
     const [editingSpeciesId, setEditingSpeciesId] = useState(null);
+
+    // ────────────────────────────────
+    // 회원 관리
+    // ────────────────────────────────
+    const [users, setUsers] = useState([]);
+    const [usersLoading, setUsersLoading] = useState(true);
+    const [usersListError, setUsersListError] = useState("");
+    const [userSearch, setUserSearch] = useState("");
+    const [roleFilter, setRoleFilter] = useState("all");
+    const [roleUpdatingId, setRoleUpdatingId] = useState(null);
 
     useEffect(() => {
         const token = localStorage.getItem("token");
@@ -85,6 +105,7 @@ function AdminPage() {
         }
         fetchDevices();
         fetchSpecies();
+        fetchUsers();
     }, [navigate]);
 
     // ── 기기 관련 함수 ──
@@ -191,7 +212,6 @@ function AdminPage() {
         setSpeciesCreateMessage("");
     };
 
-    // ✅ 목록의 "수정" 버튼 클릭 → 폼에 값 채우고 수정 모드로 전환
     const handleStartEditSpecies = (sp) => {
         setEditingSpeciesId(sp.id);
         setSpeciesForm({
@@ -262,7 +282,6 @@ function AdminPage() {
         try {
             await deleteSpeciesApi(id);
             setSpeciesList(prev => prev.filter(s => s.id !== id));
-            // 삭제한 품종을 수정 중이었다면 폼 초기화
             if (editingSpeciesId === id) resetSpeciesForm();
         } catch (err) {
             console.error(err);
@@ -281,6 +300,77 @@ function AdminPage() {
     }, [speciesList, speciesSearch]);
 
     const isSpeciesScrollable = filteredSpecies.length > 8;
+
+    // ── 회원 관련 함수 ──
+    const fetchUsers = async () => {
+        setUsersLoading(true);
+        setUsersListError("");
+        try {
+            const res = await getAllUsersAdminApi();
+            setUsers(res.data ?? []);
+        } catch (err) {
+            console.error(err);
+            setUsersListError("회원 목록을 불러오지 못했습니다.");
+        } finally {
+            setUsersLoading(false);
+        }
+    };
+
+    const handleDeleteUser = async (user) => {
+        if (user.username === myUsername) return; // 이중 방어
+        if (!window.confirm(`'${user.username}' 회원을 강제 탈퇴시킬까요? 이 작업은 되돌릴 수 없습니다.`)) return;
+
+        try {
+            await adminDeleteUserApi(user.id);
+            setUsers(prev => prev.filter(u => u.id !== user.id));
+        } catch (err) {
+            console.error(err);
+            alert(
+                err.response?.data?.message ||
+                err.response?.data ||
+                "탈퇴 처리에 실패했습니다."
+            );
+        }
+    };
+
+    const handleToggleRole = async (user) => {
+        if (user.username === myUsername) return; // 이중 방어
+
+        const nextRole = user.role === "ROLE_ADMIN" ? "ROLE_USER" : "ROLE_ADMIN";
+        const label = nextRole === "ROLE_ADMIN" ? "관리자" : "일반회원";
+        if (!window.confirm(`'${user.username}' 회원을 ${label}(으)로 변경할까요?`)) return;
+
+        setRoleUpdatingId(user.id);
+        try {
+            const res = await adminUpdateUserRoleApi(user.id, nextRole);
+            setUsers(prev => prev.map(u => u.id === user.id ? { ...u, role: res.data.role } : u));
+        } catch (err) {
+            console.error(err);
+            alert(
+                err.response?.data?.message ||
+                err.response?.data ||
+                "권한 변경에 실패했습니다."
+            );
+        } finally {
+            setRoleUpdatingId(null);
+        }
+    };
+
+    const filteredUsers = useMemo(() => {
+        return users.filter(u => {
+            const matchesRole = roleFilter === "all" ? true : u.role === roleFilter;
+
+            const q = userSearch.trim().toLowerCase();
+            const matchesSearch = !q ||
+                u.username?.toLowerCase().includes(q) ||
+                u.email?.toLowerCase().includes(q);
+
+            return matchesRole && matchesSearch;
+        });
+    }, [users, userSearch, roleFilter]);
+
+    const adminCount = users.filter(u => u.role === "ROLE_ADMIN").length;
+    const isUsersScrollable = filteredUsers.length > 8;
 
     return (
         <div className="max-w-4xl mx-auto flex flex-col gap-6">
@@ -628,6 +718,128 @@ function AdminPage() {
                 {filteredSpecies.length > 0 && (
                     <p className="text-xs text-gray-300 mt-3 text-right">
                         총 {filteredSpecies.length}개 {isSpeciesScrollable && "· 스크롤하여 더 보기"}
+                    </p>
+                )}
+            </div>
+
+            {/* ────────────────────────────────
+                ✅ 회원 관리
+            ──────────────────────────────── */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
+                    <h2 className="text-base font-bold text-gray-800">👤 회원 관리</h2>
+                    <span className="text-xs text-gray-400">
+                        전체 {users.length}명 · 관리자 {adminCount}명
+                    </span>
+                </div>
+                <p className="text-xs text-gray-400 mb-4">
+                    본인 계정은 안전을 위해 여기서 탈퇴/권한 변경이 불가능해요.
+                </p>
+
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                    <div className="flex gap-2 overflow-x-auto">
+                        {ROLE_FILTERS.map(f => (
+                            <button
+                                key={f.key}
+                                onClick={() => setRoleFilter(f.key)}
+                                className={`text-xs px-3 py-1.5 rounded-full font-medium whitespace-nowrap transition-colors ${
+                                    roleFilter === f.key
+                                        ? "bg-green-600 text-white"
+                                        : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                                }`}
+                            >{f.label}</button>
+                        ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="text"
+                            value={userSearch}
+                            onChange={(e) => setUserSearch(e.target.value)}
+                            placeholder="아이디, 이메일 검색..."
+                            className="flex-1 sm:flex-none border border-gray-200 rounded-lg px-3 py-1.5 text-xs sm:w-48 focus:outline-none focus:ring-2 focus:ring-green-400"
+                        />
+                        <button onClick={fetchUsers} className="text-xs text-gray-400 hover:text-green-600 px-2 py-1.5 border border-gray-200 rounded-lg whitespace-nowrap">
+                            ↻ 새로고침
+                        </button>
+                    </div>
+                </div>
+
+                {usersListError && (
+                    <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2 mb-3">{usersListError}</div>
+                )}
+
+                {usersLoading ? (
+                    <div className="text-center py-10 text-gray-400 text-sm">불러오는 중...</div>
+                ) : filteredUsers.length === 0 ? (
+                    <div className="text-center py-10 text-gray-300 text-sm">
+                        {users.length === 0 ? "회원이 없어요" : "검색 결과가 없어요"}
+                    </div>
+                ) : (
+                    <div className={`overflow-x-auto ${isUsersScrollable ? "max-h-[420px] overflow-y-auto" : ""}`}>
+                        <table className="w-full text-sm min-w-[600px]">
+                            <thead className={isUsersScrollable ? "sticky top-0 bg-white z-10" : ""}>
+                                <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+                                    <th className="py-2 pr-2 font-medium">아이디</th>
+                                    <th className="py-2 pr-2 font-medium">이메일</th>
+                                    <th className="py-2 pr-2 font-medium">권한</th>
+                                    <th className="py-2 pr-2 font-medium">가입일</th>
+                                    <th className="py-2 font-medium text-right">관리</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {filteredUsers.map(u => {
+                                    const isMe = u.username === myUsername;
+                                    return (
+                                        <tr key={u.id} className={`hover:bg-gray-50/50 ${isMe ? "bg-yellow-50/40" : ""}`}>
+                                            <td className="py-3 pr-2 font-medium text-gray-700">
+                                                {u.username} {isMe && <span className="text-[10px] text-yellow-600 font-bold ml-1">(나)</span>}
+                                            </td>
+                                            <td className="py-3 pr-2 text-gray-500">{u.email}</td>
+                                            <td className="py-3 pr-2">
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                                    u.role === "ROLE_ADMIN" ? "bg-purple-100 text-purple-600" : "bg-gray-100 text-gray-500"
+                                                }`}>
+                                                    {u.role === "ROLE_ADMIN" ? "관리자" : "일반회원"}
+                                                </span>
+                                            </td>
+                                            <td className="py-3 pr-2 text-gray-400 text-xs">{u.createdAt?.slice(0, 10) || "-"}</td>
+                                            <td className="py-3 text-right">
+                                                <div className="flex justify-end gap-3">
+                                                    <button
+                                                        onClick={() => handleToggleRole(u)}
+                                                        disabled={isMe || roleUpdatingId === u.id}
+                                                        className={`text-xs font-medium ${
+                                                            isMe
+                                                                ? "text-gray-300 cursor-not-allowed"
+                                                                : "text-blue-500 hover:text-blue-700"
+                                                        }`}
+                                                    >
+                                                        {roleUpdatingId === u.id
+                                                            ? "변경 중..."
+                                                            : u.role === "ROLE_ADMIN" ? "일반회원으로" : "관리자로"}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteUser(u)}
+                                                        disabled={isMe}
+                                                        className={`text-xs font-medium ${
+                                                            isMe
+                                                                ? "text-gray-300 cursor-not-allowed"
+                                                                : "text-red-400 hover:text-red-600"
+                                                        }`}
+                                                    >강퇴</button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {filteredUsers.length > 0 && (
+                    <p className="text-xs text-gray-300 mt-3 text-right">
+                        총 {filteredUsers.length}명 {isUsersScrollable && "· 스크롤하여 더 보기"}
                     </p>
                 )}
             </div>
