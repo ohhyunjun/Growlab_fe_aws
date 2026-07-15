@@ -17,6 +17,10 @@ export const createPlantApi = (data) => axios.post(`${API_BASE}/plants`, data, a
 export const createSpeciesApi = (speciesData) =>
     axios.post(`${API_BASE}/species`, speciesData, authHeader());
 
+// (관리자) 품종 수정
+export const updateSpeciesApi = (speciesId, speciesData) =>
+    axios.put(`${API_BASE}/species/${speciesId}`, speciesData, authHeader());
+
 // (관리자) 품종 삭제
 export const deleteSpeciesApi = (speciesId) =>
     axios.delete(`${API_BASE}/species/${speciesId}`, authHeader());
