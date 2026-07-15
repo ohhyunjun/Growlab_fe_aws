@@ -16,6 +16,12 @@ import {
     adminDeleteUserApi,
     adminUpdateUserRoleApi,
 } from "../../api/userApi";
+import {
+    getArticlesAdminApi,
+    adminDeleteArticleApi,
+    getCommentsByArticleApi,
+    adminDeleteCommentApi,
+} from "../../api/articleApi";
 
 const FILTERS = [
     { key: "all", label: "전체" },
@@ -52,6 +58,8 @@ const ROLE_FILTERS = [
     { key: "ROLE_ADMIN", label: "관리자" },
     { key: "ROLE_USER", label: "일반회원" },
 ];
+
+const ARTICLE_PAGE_SIZE = 20;
 
 function AdminPage() {
     const navigate = useNavigate();
@@ -96,6 +104,22 @@ function AdminPage() {
     const [roleFilter, setRoleFilter] = useState("all");
     const [roleUpdatingId, setRoleUpdatingId] = useState(null);
 
+    // ────────────────────────────────
+    // 게시글 + 댓글(게시글별 펼침) 관리
+    // ────────────────────────────────
+    const [articles, setArticles] = useState([]);
+    const [articlePage, setArticlePage] = useState(0);
+    const [articleHasMore, setArticleHasMore] = useState(true);
+    const [articlesLoading, setArticlesLoading] = useState(true);
+    const [articlesLoadingMore, setArticlesLoadingMore] = useState(false);
+    const [articlesListError, setArticlesListError] = useState("");
+    const [articleSearch, setArticleSearch] = useState("");
+
+    // ✅ 펼쳐진 게시글 id (한 번에 하나만 펼침)
+    const [expandedArticleId, setExpandedArticleId] = useState(null);
+    // ✅ 게시글별 댓글 캐시: { [articleId]: { loading, error, list } }
+    const [articleComments, setArticleComments] = useState({});
+
     useEffect(() => {
         const token = localStorage.getItem("token");
         const role = localStorage.getItem("role");
@@ -106,6 +130,7 @@ function AdminPage() {
         fetchDevices();
         fetchSpecies();
         fetchUsers();
+        fetchArticles(0);
     }, [navigate]);
 
     // ── 기기 관련 함수 ──
@@ -317,7 +342,7 @@ function AdminPage() {
     };
 
     const handleDeleteUser = async (user) => {
-        if (user.username === myUsername) return; // 이중 방어
+        if (user.username === myUsername) return;
         if (!window.confirm(`'${user.username}' 회원을 강제 탈퇴시킬까요? 이 작업은 되돌릴 수 없습니다.`)) return;
 
         try {
@@ -334,7 +359,7 @@ function AdminPage() {
     };
 
     const handleToggleRole = async (user) => {
-        if (user.username === myUsername) return; // 이중 방어
+        if (user.username === myUsername) return;
 
         const nextRole = user.role === "ROLE_ADMIN" ? "ROLE_USER" : "ROLE_ADMIN";
         const label = nextRole === "ROLE_ADMIN" ? "관리자" : "일반회원";
@@ -371,6 +396,108 @@ function AdminPage() {
 
     const adminCount = users.filter(u => u.role === "ROLE_ADMIN").length;
     const isUsersScrollable = filteredUsers.length > 8;
+
+    // ── 게시글 관련 함수 ──
+    const fetchArticles = async (page) => {
+        if (page === 0) setArticlesLoading(true);
+        else setArticlesLoadingMore(true);
+        setArticlesListError("");
+        try {
+            const res = await getArticlesAdminApi(page, ARTICLE_PAGE_SIZE);
+            const content = res.data?.content ?? [];
+            setArticles(prev => page === 0 ? content : [...prev, ...content]);
+            setArticleHasMore(!res.data?.last);
+            setArticlePage(page);
+        } catch (err) {
+            console.error(err);
+            setArticlesListError("게시글 목록을 불러오지 못했습니다.");
+        } finally {
+            setArticlesLoading(false);
+            setArticlesLoadingMore(false);
+        }
+    };
+
+    const handleDeleteArticle = async (e, article) => {
+        e.stopPropagation(); // 행 클릭(펼치기)과 충돌 방지
+        if (!window.confirm(`'${article.title}' 게시글을 삭제할까요? 댓글도 함께 삭제됩니다.`)) return;
+
+        try {
+            await adminDeleteArticleApi(article.id);
+            setArticles(prev => prev.filter(a => a.id !== article.id));
+            if (expandedArticleId === article.id) setExpandedArticleId(null);
+        } catch (err) {
+            console.error(err);
+            alert(
+                err.response?.data ||
+                err.response?.data?.message ||
+                "삭제에 실패했습니다."
+            );
+        }
+    };
+
+    const filteredArticles = useMemo(() => {
+        const q = articleSearch.trim().toLowerCase();
+        if (!q) return articles;
+        return articles.filter(a =>
+            a.title?.toLowerCase().includes(q) ||
+            a.authorUsername?.toLowerCase().includes(q)
+        );
+    }, [articles, articleSearch]);
+
+    const isArticlesScrollable = filteredArticles.length > 8;
+
+    // ✅ 게시글 행 클릭 → 댓글 펼치기/접기, 처음이면 fetch
+    const handleToggleArticle = async (article) => {
+        if (expandedArticleId === article.id) {
+            setExpandedArticleId(null);
+            return;
+        }
+        setExpandedArticleId(article.id);
+
+        // 이미 캐시되어 있으면 재조회 안 함
+        if (articleComments[article.id]) return;
+
+        setArticleComments(prev => ({
+            ...prev,
+            [article.id]: { loading: true, error: "", list: [] }
+        }));
+
+        try {
+            const res = await getCommentsByArticleApi(article.id);
+            setArticleComments(prev => ({
+                ...prev,
+                [article.id]: { loading: false, error: "", list: res.data ?? [] }
+            }));
+        } catch (err) {
+            console.error(err);
+            setArticleComments(prev => ({
+                ...prev,
+                [article.id]: { loading: false, error: "댓글을 불러오지 못했습니다.", list: [] }
+            }));
+        }
+    };
+
+    const handleDeleteComment = async (articleId, comment) => {
+        if (!window.confirm("이 댓글을 삭제할까요?")) return;
+
+        try {
+            await adminDeleteCommentApi(comment.id);
+            setArticleComments(prev => ({
+                ...prev,
+                [articleId]: {
+                    ...prev[articleId],
+                    list: prev[articleId].list.filter(c => c.id !== comment.id),
+                }
+            }));
+        } catch (err) {
+            console.error(err);
+            alert(
+                err.response?.data ||
+                err.response?.data?.message ||
+                "삭제에 실패했습니다."
+            );
+        }
+    };
 
     return (
         <div className="max-w-4xl mx-auto flex flex-col gap-6">
@@ -521,9 +648,7 @@ function AdminPage() {
                 )}
             </div>
 
-            {/* ────────────────────────────────
-                ✅ 품종 등록 / 수정
-            ──────────────────────────────── */}
+            {/* 품종 등록 / 수정 */}
             <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
                 <div className="flex items-center justify-between mb-1">
                     <h2 className="text-base font-bold text-gray-800">
@@ -636,9 +761,7 @@ function AdminPage() {
                 </form>
             </div>
 
-            {/* ────────────────────────────────
-                ✅ 품종 목록
-            ──────────────────────────────── */}
+            {/* 품종 목록 */}
             <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                     <h2 className="text-base font-bold text-gray-800">전체 품종 목록</h2>
@@ -722,9 +845,7 @@ function AdminPage() {
                 )}
             </div>
 
-            {/* ────────────────────────────────
-                ✅ 회원 관리
-            ──────────────────────────────── */}
+            {/* 회원 관리 */}
             <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
                     <h2 className="text-base font-bold text-gray-800">👤 회원 관리</h2>
@@ -840,6 +961,138 @@ function AdminPage() {
                 {filteredUsers.length > 0 && (
                     <p className="text-xs text-gray-300 mt-3 text-right">
                         총 {filteredUsers.length}명 {isUsersScrollable && "· 스크롤하여 더 보기"}
+                    </p>
+                )}
+            </div>
+
+            {/* ────────────────────────────────
+                ✅ 게시글 관리 (행 클릭 → 댓글 펼치기)
+            ──────────────────────────────── */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
+                    <h2 className="text-base font-bold text-gray-800">📝 게시글 · 댓글 관리</h2>
+                    <span className="text-xs text-gray-400">불러온 게시글 {articles.length}개</span>
+                </div>
+                <p className="text-xs text-gray-400 mb-4">
+                    게시글 행을 클릭하면 해당 게시글의 댓글을 펼쳐볼 수 있어요. 삭제 버튼은 별도로 동작합니다.
+                </p>
+
+                <div className="flex items-center gap-2 mb-4">
+                    <input
+                        type="text"
+                        value={articleSearch}
+                        onChange={(e) => setArticleSearch(e.target.value)}
+                        placeholder="제목, 작성자 검색..."
+                        className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-400"
+                    />
+                    <button
+                        onClick={() => fetchArticles(0)}
+                        className="text-xs text-gray-400 hover:text-green-600 px-2 py-1.5 border border-gray-200 rounded-lg whitespace-nowrap"
+                    >
+                        ↻ 새로고침
+                    </button>
+                </div>
+
+                {articlesListError && (
+                    <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2 mb-3">{articlesListError}</div>
+                )}
+
+                {articlesLoading ? (
+                    <div className="text-center py-10 text-gray-400 text-sm">불러오는 중...</div>
+                ) : filteredArticles.length === 0 ? (
+                    <div className="text-center py-10 text-gray-300 text-sm">
+                        {articles.length === 0 ? "게시글이 없어요" : "검색 결과가 없어요"}
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm min-w-[600px]">
+                            <thead>
+                                <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+                                    <th className="py-2 pr-2 font-medium w-4"></th>
+                                    <th className="py-2 pr-2 font-medium">제목</th>
+                                    <th className="py-2 pr-2 font-medium">카테고리</th>
+                                    <th className="py-2 pr-2 font-medium">작성자</th>
+                                    <th className="py-2 pr-2 font-medium">작성일</th>
+                                    <th className="py-2 font-medium text-right">관리</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {filteredArticles.map(a => {
+                                    const isExpanded = expandedArticleId === a.id;
+                                    const commentState = articleComments[a.id];
+                                    return (
+                                        <>
+                                            <tr
+                                                key={a.id}
+                                                onClick={() => handleToggleArticle(a)}
+                                                className={`cursor-pointer hover:bg-gray-50/50 ${isExpanded ? "bg-green-50/40" : ""}`}
+                                            >
+                                                <td className="py-3 pr-2 text-gray-300">
+                                                    <span className={`inline-block transition-transform ${isExpanded ? "rotate-90" : ""}`}>▶</span>
+                                                </td>
+                                                <td className="py-3 pr-2 font-medium text-gray-700 max-w-[200px] truncate">{a.title}</td>
+                                                <td className="py-3 pr-2 text-gray-500">{a.category}</td>
+                                                <td className="py-3 pr-2 text-gray-500">{a.authorUsername}</td>
+                                                <td className="py-3 pr-2 text-gray-400 text-xs">{a.createdAt?.slice(0, 10) || "-"}</td>
+                                                <td className="py-3 text-right">
+                                                    <button
+                                                        onClick={(e) => handleDeleteArticle(e, a)}
+                                                        className="text-xs text-red-400 hover:text-red-600 font-medium"
+                                                    >삭제</button>
+                                                </td>
+                                            </tr>
+                                            {isExpanded && (
+                                                <tr key={`${a.id}-comments`}>
+                                                    <td colSpan={6} className="bg-gray-50/60 px-4 py-3">
+                                                        {commentState?.loading ? (
+                                                            <div className="text-xs text-gray-400 py-4 text-center">댓글 불러오는 중...</div>
+                                                        ) : commentState?.error ? (
+                                                            <div className="text-xs text-red-500 py-4 text-center">{commentState.error}</div>
+                                                        ) : commentState?.list.length === 0 ? (
+                                                            <div className="text-xs text-gray-300 py-4 text-center">댓글이 없어요</div>
+                                                        ) : (
+                                                            <div className="flex flex-col divide-y divide-gray-100 max-h-[280px] overflow-y-auto">
+                                                                {commentState?.list.map(c => (
+                                                                    <div key={c.id} className="py-2.5 flex items-start justify-between gap-3">
+                                                                        <div className="min-w-0">
+                                                                            <div className="flex items-center gap-2 mb-0.5">
+                                                                                <span className="text-xs font-bold text-gray-700">{c.authorUsername}</span>
+                                                                                <span className="text-[10px] text-gray-300">{c.createdAt?.slice(0, 10)}</span>
+                                                                            </div>
+                                                                            <p className="text-sm text-gray-600 whitespace-pre-wrap">{c.content}</p>
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={() => handleDeleteComment(a.id, c)}
+                                                                            className="text-xs text-red-400 hover:text-red-600 font-medium flex-shrink-0"
+                                                                        >삭제</button>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {articleHasMore && !articlesLoading && (
+                    <button
+                        onClick={() => fetchArticles(articlePage + 1)}
+                        disabled={articlesLoadingMore}
+                        className="w-full mt-3 text-xs text-gray-400 hover:text-green-600 py-2 border border-dashed border-gray-200 hover:border-green-300 rounded-lg transition-colors"
+                    >
+                        {articlesLoadingMore ? "불러오는 중..." : "더 불러오기"}
+                    </button>
+                )}
+
+                {filteredArticles.length > 0 && (
+                    <p className="text-xs text-gray-300 mt-3 text-right">
+                        불러온 {filteredArticles.length}개
                     </p>
                 )}
             </div>
