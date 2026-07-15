@@ -8,6 +8,7 @@ import {
 import {
     getAllSpeciesApi,
     createSpeciesApi,
+    updateSpeciesApi,
     deleteSpeciesApi,
 } from "../../api/speciesApi";
 
@@ -71,6 +72,9 @@ function AdminPage() {
     const [speciesCreateLoading, setSpeciesCreateLoading] = useState(false);
     const [speciesCreateError, setSpeciesCreateError] = useState("");
     const [speciesCreateMessage, setSpeciesCreateMessage] = useState("");
+
+    // ✅ 수정 모드 여부 (null이면 등록 모드, 값이 있으면 해당 id 수정 모드)
+    const [editingSpeciesId, setEditingSpeciesId] = useState(null);
 
     useEffect(() => {
         const token = localStorage.getItem("token");
@@ -180,7 +184,29 @@ function AdminPage() {
         setSpeciesForm(prev => ({ ...prev, [field]: value }));
     };
 
-    const handleCreateSpecies = async (e) => {
+    const resetSpeciesForm = () => {
+        setSpeciesForm(EMPTY_SPECIES_FORM);
+        setEditingSpeciesId(null);
+        setSpeciesCreateError("");
+        setSpeciesCreateMessage("");
+    };
+
+    // ✅ 목록의 "수정" 버튼 클릭 → 폼에 값 채우고 수정 모드로 전환
+    const handleStartEditSpecies = (sp) => {
+        setEditingSpeciesId(sp.id);
+        setSpeciesForm({
+            name: sp.name ?? "",
+            daysToMature: sp.daysToMature ?? "",
+            category: sp.category ?? "VEGETABLE",
+            difficulty: sp.difficulty ?? "NORMAL",
+            aiPromptGuideline: sp.aiPromptGuideline ?? "",
+        });
+        setSpeciesCreateError("");
+        setSpeciesCreateMessage("");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    const handleSubmitSpecies = async (e) => {
         e.preventDefault();
 
         const name = speciesForm.name.trim();
@@ -195,25 +221,35 @@ function AdminPage() {
             return;
         }
 
+        const payload = {
+            name,
+            daysToMature: days,
+            category: speciesForm.category,
+            difficulty: speciesForm.difficulty,
+            aiPromptGuideline: speciesForm.aiPromptGuideline.trim() || null,
+        };
+
         setSpeciesCreateLoading(true);
         setSpeciesCreateError("");
         setSpeciesCreateMessage("");
         try {
-            await createSpeciesApi({
-                name,
-                daysToMature: days,
-                category: speciesForm.category,
-                difficulty: speciesForm.difficulty,
-                aiPromptGuideline: speciesForm.aiPromptGuideline.trim() || null,
-            });
-            setSpeciesCreateMessage(`'${name}' 품종이 등록되었습니다.`);
+            if (editingSpeciesId) {
+                await updateSpeciesApi(editingSpeciesId, payload);
+                setSpeciesCreateMessage(`'${name}' 품종이 수정되었습니다.`);
+            } else {
+                await createSpeciesApi(payload);
+                setSpeciesCreateMessage(`'${name}' 품종이 등록되었습니다.`);
+            }
             setSpeciesForm(EMPTY_SPECIES_FORM);
+            setEditingSpeciesId(null);
             fetchSpecies();
         } catch (err) {
             setSpeciesCreateError(
                 err.response?.data?.message ||
                 err.response?.data ||
-                "품종 등록에 실패했습니다. 이미 존재하는 이름일 수 있어요."
+                (editingSpeciesId
+                    ? "품종 수정에 실패했습니다."
+                    : "품종 등록에 실패했습니다. 이미 존재하는 이름일 수 있어요.")
             );
         } finally {
             setSpeciesCreateLoading(false);
@@ -226,6 +262,8 @@ function AdminPage() {
         try {
             await deleteSpeciesApi(id);
             setSpeciesList(prev => prev.filter(s => s.id !== id));
+            // 삭제한 품종을 수정 중이었다면 폼 초기화
+            if (editingSpeciesId === id) resetSpeciesForm();
         } catch (err) {
             console.error(err);
             alert(
@@ -394,12 +432,23 @@ function AdminPage() {
             </div>
 
             {/* ────────────────────────────────
-                ✅ 품종 등록
+                ✅ 품종 등록 / 수정
             ──────────────────────────────── */}
             <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
-                <h2 className="text-base font-bold text-gray-800 mb-1">🌱 품종 등록</h2>
+                <div className="flex items-center justify-between mb-1">
+                    <h2 className="text-base font-bold text-gray-800">
+                        🌱 {editingSpeciesId ? "품종 수정" : "품종 등록"}
+                    </h2>
+                    {editingSpeciesId && (
+                        <span className="text-[10px] bg-blue-100 text-blue-600 font-bold px-2 py-0.5 rounded-full">
+                            수정 중
+                        </span>
+                    )}
+                </div>
                 <p className="text-xs text-gray-400 mb-4">
-                    여기서 등록한 품종만 사용자가 기기에 대표 품종으로 선택할 수 있어요.
+                    {editingSpeciesId
+                        ? "아래 내용을 수정하고 '수정 완료' 버튼을 눌러주세요."
+                        : "여기서 등록한 품종만 사용자가 기기에 대표 품종으로 선택할 수 있어요."}
                 </p>
 
                 {speciesCreateError && (
@@ -409,7 +458,7 @@ function AdminPage() {
                     <div className="bg-green-50 text-green-600 text-sm rounded-lg px-4 py-2 mb-3">{speciesCreateMessage}</div>
                 )}
 
-                <form onSubmit={handleCreateSpecies} className="flex flex-col gap-3">
+                <form onSubmit={handleSubmitSpecies} className="flex flex-col gap-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                             <label className="block text-xs font-medium text-gray-500 mb-1">품종 이름</label>
@@ -470,13 +519,30 @@ function AdminPage() {
                         />
                     </div>
 
-                    <button
-                        type="submit"
-                        disabled={speciesCreateLoading}
-                        className="self-end bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition-colors"
-                    >
-                        {speciesCreateLoading ? "등록 중..." : "품종 등록"}
-                    </button>
+                    <div className="flex justify-end gap-2">
+                        {editingSpeciesId && (
+                            <button
+                                type="button"
+                                onClick={resetSpeciesForm}
+                                className="px-5 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-500 hover:bg-gray-50 transition-colors"
+                            >
+                                취소
+                            </button>
+                        )}
+                        <button
+                            type="submit"
+                            disabled={speciesCreateLoading}
+                            className={`text-white font-medium px-6 py-2.5 rounded-lg text-sm transition-colors ${
+                                editingSpeciesId
+                                    ? "bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300"
+                                    : "bg-green-600 hover:bg-green-700 disabled:bg-green-300"
+                            }`}
+                        >
+                            {speciesCreateLoading
+                                ? (editingSpeciesId ? "수정 중..." : "등록 중...")
+                                : (editingSpeciesId ? "수정 완료" : "품종 등록")}
+                        </button>
+                    </div>
                 </form>
             </div>
 
@@ -524,7 +590,10 @@ function AdminPage() {
                             </thead>
                             <tbody className="divide-y divide-gray-50">
                                 {filteredSpecies.map(s => (
-                                    <tr key={s.id} className="hover:bg-gray-50/50">
+                                    <tr
+                                        key={s.id}
+                                        className={`hover:bg-gray-50/50 ${editingSpeciesId === s.id ? "bg-blue-50/50" : ""}`}
+                                    >
                                         <td className="py-3 pr-2 font-medium text-gray-700">{s.name}</td>
                                         <td className="py-3 pr-2 text-gray-500">{CATEGORY_LABEL[s.category] || s.category}</td>
                                         <td className="py-3 pr-2">
@@ -538,10 +607,16 @@ function AdminPage() {
                                         </td>
                                         <td className="py-3 pr-2 text-gray-400 text-xs">{s.daysToMature}일</td>
                                         <td className="py-3 text-right">
-                                            <button
-                                                onClick={() => handleDeleteSpecies(s.id, s.name)}
-                                                className="text-xs text-red-400 hover:text-red-600 font-medium"
-                                            >삭제</button>
+                                            <div className="flex justify-end gap-3">
+                                                <button
+                                                    onClick={() => handleStartEditSpecies(s)}
+                                                    className="text-xs text-blue-500 hover:text-blue-700 font-medium"
+                                                >수정</button>
+                                                <button
+                                                    onClick={() => handleDeleteSpecies(s.id, s.name)}
+                                                    className="text-xs text-red-400 hover:text-red-600 font-medium"
+                                                >삭제</button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
