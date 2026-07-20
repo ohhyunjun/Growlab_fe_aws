@@ -9,8 +9,8 @@ const TABS = ["프로필", "내가 쓴 글", "내가 쓴 댓글"];
 function MyPage() {
     const navigate = useNavigate();
 
-    // 🔥 기존 코드 유지하면서 state로만 변경 (UI 영향 없음)
     const [username, setUsername] = useState(localStorage.getItem("username"));
+    const isAdmin = localStorage.getItem("role") === "ROLE_ADMIN";
 
     const [activeTab, setActiveTab] = useState("프로필");
     const [isEditingName, setIsEditingName] = useState(false);
@@ -38,7 +38,16 @@ function MyPage() {
             <div className="bg-white rounded-2xl border border-gray-200 p-6 text-center">
                 <div className="text-5xl mb-4">🌱</div>
                 <h1 className="text-2xl font-bold text-gray-800 mb-1">{username}</h1>
-                <p className="text-sm text-gray-400">GrowLab 회원</p>
+                <p className="text-sm text-gray-400 mb-4">GrowLab 회원</p>
+
+                {isAdmin && (
+                    <button
+                        onClick={() => navigate("/admin")}
+                        className="inline-flex items-center gap-1.5 bg-gray-800 hover:bg-gray-900 text-white text-xs font-bold px-4 py-2 rounded-full transition-colors"
+                    >
+                        🛠 관리자페이지로 이동
+                    </button>
+                )}
             </div>
 
             <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
@@ -60,7 +69,6 @@ function MyPage() {
                         <div className="flex flex-col gap-4">
                             <div className="flex flex-col gap-3">
 
-                                {/* 아이디 변경 */}
                                 <div className="flex justify-between items-center py-3 border-b border-gray-100">
                                     <span className="text-sm text-gray-500">아이디</span>
                                     {isEditingName ? (
@@ -71,18 +79,14 @@ function MyPage() {
                                                 onChange={e => setNewUsername(e.target.value)}
                                                 className="border border-gray-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                                             />
-
-                                            {/* 🔥 기능 추가 */}
                                             <button
                                                 onClick={async () => {
                                                     try {
                                                         const token = localStorage.getItem("token");
-
                                                         await updateUsernameApi(newUsername, token);
-                                                            alert("아이디가 변경되었습니다. 다시 로그인해주세요.");
-                                                            localStorage.clear();
-                                                            navigate("/login");
-
+                                                        alert("아이디가 변경되었습니다. 다시 로그인해주세요.");
+                                                        localStorage.clear();
+                                                        navigate("/login");
                                                     } catch (e) {
                                                         console.error(e);
                                                         alert("아이디 변경 실패");
@@ -92,7 +96,6 @@ function MyPage() {
                                             >
                                                 저장
                                             </button>
-
                                             <button
                                                 onClick={() => {
                                                     setIsEditingName(false);
@@ -116,7 +119,6 @@ function MyPage() {
                                     )}
                                 </div>
 
-                                {/* 비밀번호 변경 */}
                                 <div className="flex justify-between items-center py-3 border-b border-gray-100">
                                     <span className="text-sm text-gray-500">비밀번호</span>
                                     <button
@@ -124,13 +126,10 @@ function MyPage() {
                                         onClick={async () => {
                                             const oldPassword = prompt("현재 비밀번호 입력");
                                             const newPassword = prompt("새 비밀번호 입력");
-
                                             if (!oldPassword || !newPassword) return;
-
                                             try {
                                                 const token = localStorage.getItem("token");
                                                 await updatePasswordApi(oldPassword, newPassword, token);
-
                                                 alert("비밀번호 변경 완료");
                                             } catch (e) {
                                                 console.error(e);
@@ -142,23 +141,18 @@ function MyPage() {
                                     </button>
                                 </div>
 
-                                {/* 회원 탈퇴 */}
                                 <div className="flex justify-between items-center py-3">
                                     <span className="text-sm text-gray-500">회원 탈퇴</span>
                                     <button
                                         className="text-xs text-red-400 hover:text-red-500"
                                         onClick={async () => {
                                             const password = prompt("비밀번호 입력");
-
                                             if (!password) return;
-
                                             try {
                                                 const token = localStorage.getItem("token");
                                                 await deleteUserApi(password, token);
-
                                                 localStorage.clear();
                                                 alert("탈퇴 완료");
-
                                                 navigate("/login");
                                             } catch (e) {
                                                 console.error(e);
@@ -174,7 +168,6 @@ function MyPage() {
                         </div>
                     )}
 
-                    {/* 내가 쓴 글 */}
                     {activeTab === "내가 쓴 글" && (
                         <div className="flex flex-col gap-3">
                             {articles.length === 0 ? (
@@ -199,7 +192,6 @@ function MyPage() {
                         </div>
                     )}
 
-                    {/* 내가 쓴 댓글 */}
                     {activeTab === "내가 쓴 댓글" && (
                         <div className="flex flex-col gap-3">
                             {comments.length === 0 ? (

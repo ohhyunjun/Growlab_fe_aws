@@ -78,3 +78,19 @@ export const deleteCommentApi = (commentId) =>
 export const getMyArticlesApi = (page = 0, size = 10) => {
     return api.get(`/articles/my?page=${page}&size=${size}`);
 };
+
+// (관리자) 게시글 목록 조회 - 원하는 page/size로 더 많이 가져오기
+export const getArticlesAdminApi = (page = 0, size = 50) =>
+    api.get(`/articles?page=${page}&size=${size}`);
+
+// (관리자) 게시글 강제 삭제
+export const adminDeleteArticleApi = (articleId) =>
+    api.delete(`/articles/admin/${articleId}`);
+
+// (관리자) 전체 댓글 목록 조회
+export const getAllCommentsAdminApi = () =>
+    api.get("/comments");
+
+// (관리자) 댓글 강제 삭제
+export const adminDeleteCommentApi = (commentId) =>
+    api.delete(`/admin/comments/${commentId}`);

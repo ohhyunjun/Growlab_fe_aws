@@ -7,6 +7,8 @@ function NavLinks({ onClick }) {
     const handleLogout = () => {
         localStorage.removeItem("token");
         localStorage.removeItem("username");
+        localStorage.removeItem("userId");
+        localStorage.removeItem("role");
         navigate("/login");
         if (onClick) onClick();
     };

@@ -3,11 +3,13 @@ import { getAllSpeciesApi } from "../../api/speciesApi";
 import { createPlantApi } from "../../api/plantApi";
 import { updateDeviceSpeciesApi } from "../../api/deviceApi";
 
-const CATEGORY_FILTERS = ["전체", "채소", "과일"];
+const CATEGORY_FILTERS = ["전체", "채소", "허브", "과일", "관상식물"];
 
 const CATEGORY_MAP = {
     "채소": "VEGETABLE",
-    "과일": "FRUIT"
+    "허브": "HERB",
+    "과일": "FRUIT",
+    "관상식물": "ORNAMENTAL",
 };
 
 const SPECIES_EMOJI = {
@@ -17,12 +19,20 @@ const SPECIES_EMOJI = {
     "딸기":      "🍓",
     "파프리카":  "🌶️",
     "풋고추":    "🌶️",
+    "고추":      "🌶️",
     "블루베리":  "🫐",
     "시금치":    "🥬",
     "토마토":    "🍅",
     "오이":      "🥒",
     "피망":      "🫑",
-    "깻잎":      "🍃"
+    "깻잎":      "🍃",
+    "청경채":    "🥬",
+    "브로콜리":  "🥦",
+    "바질":      "🌿",
+    "페퍼민트":  "🌿",
+    "장미":      "🌹",
+    "테이블야자": "🌴",
+    "산세베리아 스투키": "🪴",
 };
 
 const DIFFICULTY_LABEL = { EASY: "쉬움", NORMAL: "보통", HARD: "어려움" };
@@ -42,7 +52,7 @@ function SelectPlantModal({ serialNumber, portIndex, onClose, onSuccess }) {
     const [fetchLoading, setFetchLoading] = useState(true);
     const [error, setError]             = useState("");
 
-    // portIndex が null/undefined → 기기 품종 선택 전용 모드
+    // portIndex가 null/undefined → 기기 품종 선택 전용 모드
     const isSpeciesOnlyMode = portIndex === null || portIndex === undefined;
 
     useEffect(() => {
@@ -157,7 +167,9 @@ function SelectPlantModal({ serialNumber, portIndex, onClose, onSuccess }) {
                                 >
                                     {cat === "전체" && "🌿 "}
                                     {cat === "채소" && "🥬 "}
+                                    {cat === "허브" && "🌿 "}
                                     {cat === "과일" && "🍓 "}
+                                    {cat === "관상식물" && "🌸 "}
                                     {cat}
                                 </button>
                             ))}
