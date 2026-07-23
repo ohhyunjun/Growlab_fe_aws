@@ -6,7 +6,6 @@ const authHeader = () => ({
 });
 
 export const getAllSpeciesApi = () => axios.get(`${API_BASE}/species`, authHeader());
-export const createPlantApi = (data) => axios.post(`${API_BASE}/plants`, data, authHeader());
 
 // ────────────────────────────────
 // ✅ 관리자 전용 API (ROLE_ADMIN 필요)
