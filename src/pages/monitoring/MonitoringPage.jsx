@@ -1,10 +1,16 @@
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { getUserDevicesApi, updateLedApi, updatePhotoIntervalApi } from "../../api/deviceApi";
 import { getAllNoticesApi } from "../../api/noticeApi";
 import { getLatestSensorApi } from "../../api/sensorApi";
 import { getLatestPredictionApi } from "../../api/predictionApi";
 import { API_BASE } from "../../api/config";
+import {
+    finishMonitoringPerformanceRun,
+    getActiveMonitoringPerformanceRun,
+    markMonitoringPerformance,
+    measureMonitoringApi,
+} from "../../utils/monitoringPerformance";
 
 const SPECIES_EMOJI = {
     "방울토마토": "🍅", "청상추": "🥬", "적상추": "🥬",
@@ -513,9 +519,17 @@ function MonitoringPage() {
     const { serialNumber } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
+    const targetPortIndex = location.state?.portIndex;
+    const activePerfRun = getActiveMonitoringPerformanceRun(location.state?.perfRunId, serialNumber);
+    const perfRunId = activePerfRun?.id ?? location.state?.perfRunId ?? null;
+    const coreVisibleMarkedRef = useRef(false);
+    const firstSensorMarkedRef = useRef(false);
+    const performanceFinishedRef = useRef(false);
 
     const [device, setDevice] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [noticesSettled, setNoticesSettled] = useState(false);
+    const [predictionSettled, setPredictionSettled] = useState(false);
 
     const [sensorData, setSensorData] = useState(() => {
         try {
@@ -567,6 +581,13 @@ function MonitoringPage() {
     const [ledSaving, setLedSaving] = useState(false);
     const [captureSaving, setCaptureSaving] = useState(false);
 
+    useEffect(() => {
+        coreVisibleMarkedRef.current = false;
+        firstSensorMarkedRef.current = false;
+        performanceFinishedRef.current = false;
+        markMonitoringPerformance(perfRunId, "monitoring_route_rendered");
+    }, [serialNumber, perfRunId]);
+
     // ── Vision AI 분석만 새로고침 (점수 + 분석 섹션) ─────────────
     const handleRefreshVision = useCallback(async (deviceData, plantData) => {
         if (!deviceData) return;
@@ -588,13 +609,20 @@ function MonitoringPage() {
     // ── 1. 디바이스 + 알림 로드
     useEffect(() => {
         const fetchData = async () => {
+            setLoading(true);
+            setNoticesSettled(false);
+            setPredictionSettled(false);
             try {
-                const res = await getUserDevicesApi();
+                const res = await measureMonitoringApi(perfRunId, "devices", getUserDevicesApi);
                 const found = res.data.find(d => d.serialNumber === serialNumber);
                 setDevice(found);
+                markMonitoringPerformance(perfRunId, "device_data_ready", {
+                    deviceFound: Boolean(found),
+                    deviceCount: res.data.length,
+                });
 
                 if (found) {
-                    const targetPort = location.state?.portIndex;
+                    const targetPort = targetPortIndex;
                     if (targetPort !== null && targetPort !== undefined) {
                         setSelectedPort(targetPort);
                     } else if (found.plants?.length > 0) {
@@ -611,32 +639,56 @@ function MonitoringPage() {
                     setVisionAiLoading(true);
                     setAdviceAiLoading(true);
                     const representativePlant = found.plants?.find(p => p.species) ?? null;
-                    const advice = await fetchAiData(found, representativePlant);
+                    const advice = await measureMonitoringApi(
+                        perfRunId,
+                        "ai_advice",
+                        () => fetchAiData(found, representativePlant)
+                    );
                     setAiAdvice(advice);
                     setAiAnalysis(parseAiAnalysis(advice));
                     setVisionAiLoading(false);
                     setAdviceAiLoading(false);
+                    markMonitoringPerformance(perfRunId, "ai_advice_settled", {
+                        hasAdvice: Boolean(advice),
+                    });
                 }
 
-                const noticeRes = await getAllNoticesApi();
+                const noticeRes = await measureMonitoringApi(perfRunId, "notices", getAllNoticesApi);
                 const filtered = noticeRes.data.filter(n => n.deviceSerial === serialNumber);
                 setNotices(filtered);
                 sessionStorage.setItem(getNoticeKey(serialNumber), JSON.stringify(filtered));
+                markMonitoringPerformance(perfRunId, "notices_settled", {
+                    totalCount: noticeRes.data.length,
+                    filteredCount: filtered.length,
+                });
             } catch (e) { console.error(e); }
-            finally { setLoading(false); }
+            finally {
+                setNoticesSettled(true);
+                setLoading(false);
+            }
         };
         fetchData();
-    }, [serialNumber]);
+    }, [serialNumber, perfRunId, targetPortIndex]);
 
     // ── 2. 예측 조회
     useEffect(() => {
         if (!device) return;
         const plant = device.plants?.find(p => p.portIndex === selectedPort);
-        if (!plant) { setPrediction(null); return; }
-        getLatestPredictionApi(plant.id)
+        if (!plant) {
+            setPrediction(null);
+            setPredictionSettled(true);
+            markMonitoringPerformance(perfRunId, "prediction_settled", { hasPlant: false });
+            return;
+        }
+        setPredictionSettled(false);
+        measureMonitoringApi(perfRunId, "prediction", () => getLatestPredictionApi(plant.id))
             .then(res => setPrediction(res.data))
-            .catch(() => setPrediction(null));
-    }, [device, selectedPort]);
+            .catch(() => setPrediction(null))
+            .finally(() => {
+                setPredictionSettled(true);
+                markMonitoringPerformance(perfRunId, "prediction_settled", { hasPlant: true });
+            });
+    }, [device, selectedPort, perfRunId]);
 
     // ── 3. 센서 최신값 폴링
     useEffect(() => {
@@ -653,6 +705,10 @@ function MonitoringPage() {
                     return;
                 }
                 const data = res.data;
+                if (!firstSensorMarkedRef.current) {
+                    firstSensorMarkedRef.current = true;
+                    markMonitoringPerformance(perfRunId, "sensor_first_value");
+                }
                 setSensorData(prev => {
                     const next = {
                         temperature:        data.temperature        ?? prev.temperature,
@@ -701,7 +757,45 @@ function MonitoringPage() {
             stopPolling();
             document.removeEventListener("visibilitychange", handleVisibilityChange);
         };
-    }, [serialNumber]);
+    }, [serialNumber, perfRunId]);
+
+    useEffect(() => {
+        if (!loading && device && !coreVisibleMarkedRef.current) {
+            coreVisibleMarkedRef.current = true;
+            markMonitoringPerformance(perfRunId, "monitoring_core_visible");
+        }
+    }, [loading, device, perfRunId]);
+
+    useEffect(() => {
+        if (
+            !loading &&
+            device &&
+            noticesSettled &&
+            predictionSettled &&
+            !visionAiLoading &&
+            !adviceAiLoading &&
+            !performanceFinishedRef.current
+        ) {
+            performanceFinishedRef.current = true;
+            finishMonitoringPerformanceRun(perfRunId, {
+                hasDevice: true,
+                noticeCount: notices.length,
+                hasPrediction: Boolean(prediction),
+                hasAiAdvice: Boolean(aiAdvice),
+            });
+        }
+    }, [
+        loading,
+        device,
+        noticesSettled,
+        predictionSettled,
+        visionAiLoading,
+        adviceAiLoading,
+        notices.length,
+        prediction,
+        aiAdvice,
+        perfRunId,
+    ]);
 
     // ── 4. 알림 폴링
     useEffect(() => {

@@ -5,6 +5,7 @@ import { getUserDevicesApi, deleteDeviceApi, updatePortStatusApi } from "../../a
 import { createPlantApi, deletePlantApi } from "../../api/plantApi";
 import AddDeviceModal from "../../components/device/AddDeviceModal";
 import SelectPlantModal from "../../components/device/SelectPlantModal";
+import { startMonitoringPerformanceRun } from "../../utils/monitoringPerformance";
 
 const ICONS = ["🍓", "🌿", "🌱", "🌻", "🍅", "🥬", "🌶️", "🌸"];
 
@@ -288,8 +289,12 @@ function HomePage() {
     };
 
     const handleOpenMonitoring = (serial, portIndex) => {
+        const perfRunId = startMonitoringPerformanceRun(serial);
         navigate(`/monitoring/${serial}`, {
-            state: portIndex !== null && portIndex !== undefined ? { portIndex } : {}
+            state: {
+                ...(portIndex !== null && portIndex !== undefined ? { portIndex } : {}),
+                perfRunId,
+            }
         });
     };
 
