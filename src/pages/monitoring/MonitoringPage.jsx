@@ -606,73 +606,140 @@ function MonitoringPage() {
         setAdviceAiLoading(false);
     }, []);
 
-    // ── 1. 디바이스 + 알림 로드
+    // ── 1. 디바이스 + 부가 데이터 로드
     useEffect(() => {
+        const loadAiAdvice = async (found) => {
+            if (!found) return;
+
+            setVisionAiLoading(true);
+            setAdviceAiLoading(true);
+
+            try {
+                const representativePlant =
+                    found.plants?.find(p => p.species) ?? null;
+
+                const advice = await measureMonitoringApi(
+                    perfRunId,
+                    "ai_advice",
+                    () => fetchAiData(found, representativePlant)
+                );
+
+                setAiAdvice(advice);
+                setAiAnalysis(parseAiAnalysis(advice));
+
+                markMonitoringPerformance(
+                    perfRunId,
+                    "ai_advice_settled",
+                    { hasAdvice: Boolean(advice) }
+                );
+            } catch (e) {
+                console.error("[AI advice]", e);
+            } finally {
+                setVisionAiLoading(false);
+                setAdviceAiLoading(false);
+            }
+        };
+
+        const loadNotices = async () => {
+            try {
+                const noticeRes = await measureMonitoringApi(
+                    perfRunId,
+                    "notices",
+                    getAllNoticesApi
+                );
+
+                const filtered = noticeRes.data.filter(
+                    n => n.deviceSerial === serialNumber
+                );
+
+                setNotices(filtered);
+
+                sessionStorage.setItem(
+                    getNoticeKey(serialNumber),
+                    JSON.stringify(filtered)
+                );
+
+                markMonitoringPerformance(
+                    perfRunId,
+                    "notices_settled",
+                    {
+                        totalCount: noticeRes.data.length,
+                        filteredCount: filtered.length,
+                    }
+                );
+            } catch (e) {
+                console.error("[Initial notices]", e);
+            } finally {
+                setNoticesSettled(true);
+            }
+        };
+
         const fetchData = async () => {
             setLoading(true);
             setNoticesSettled(false);
             setPredictionSettled(false);
+
             try {
-                const res = await measureMonitoringApi(perfRunId, "devices", getUserDevicesApi);
-                const found = res.data.find(d => d.serialNumber === serialNumber);
+                const res = await measureMonitoringApi(
+                    perfRunId,
+                    "devices",
+                    getUserDevicesApi
+                );
+
+                const found = res.data.find(
+                    d => d.serialNumber === serialNumber
+                );
+
                 setDevice(found);
-                markMonitoringPerformance(perfRunId, "device_data_ready", {
-                    deviceFound: Boolean(found),
-                    deviceCount: res.data.length,
-                });
+
+                markMonitoringPerformance(
+                    perfRunId,
+                    "device_data_ready",
+                    {
+                        deviceFound: Boolean(found),
+                        deviceCount: res.data.length,
+                    }
+                );
 
                 if (found) {
                     const targetPort = targetPortIndex;
+
                     if (targetPort !== null && targetPort !== undefined) {
                         setSelectedPort(targetPort);
                     } else if (found.plants?.length > 0) {
-                        const portStatus = found.portStatus || "00000000";
-                        const onPortWithPlant = found.plants.find(p => portStatus[p.portIndex] === "1");
-                        if (onPortWithPlant) setSelectedPort(onPortWithPlant.portIndex);
-                        else {
-                            const firstPlant = found.plants.reduce((a, b) => a.portIndex < b.portIndex ? a : b);
+                        const portStatus =
+                            found.portStatus || "00000000";
+
+                        const onPortWithPlant = found.plants.find(
+                            p => portStatus[p.portIndex] === "1"
+                        );
+
+                        if (onPortWithPlant) {
+                            setSelectedPort(onPortWithPlant.portIndex);
+                        } else {
+                            const firstPlant = found.plants.reduce(
+                                (a, b) =>
+                                    a.portIndex < b.portIndex ? a : b
+                            );
+
                             setSelectedPort(firstPlant.portIndex);
                         }
                     }
-
-                    // 기기 데이터가 준비되면 모니터링 화면부터 표시
-                    setVisionAiLoading(true);
-                    setAdviceAiLoading(true);
-                    setLoading(false);
-
-                    const representativePlant = found.plants?.find(p => p.species) ?? null;
-                    const advice = await measureMonitoringApi(
-                        perfRunId,
-                        "ai_advice",
-                        () => fetchAiData(found, representativePlant)
-                    );
-                    setAiAdvice(advice);
-                    setAiAnalysis(parseAiAnalysis(advice));
-                    setVisionAiLoading(false);
-                    setAdviceAiLoading(false);
-                    markMonitoringPerformance(perfRunId, "ai_advice_settled", {
-                        hasAdvice: Boolean(advice),
-                    });
                 }
 
-                if (!found) {
-                    setLoading(false);
-                }
-
-                const noticeRes = await measureMonitoringApi(perfRunId, "notices", getAllNoticesApi);
-                const filtered = noticeRes.data.filter(n => n.deviceSerial === serialNumber);
-                setNotices(filtered);
-                sessionStorage.setItem(getNoticeKey(serialNumber), JSON.stringify(filtered));
-                markMonitoringPerformance(perfRunId, "notices_settled", {
-                    totalCount: noticeRes.data.length,
-                    filteredCount: filtered.length,
-                });
-            } catch (e) { console.error(e); }
-            finally {
-                setNoticesSettled(true);
+                // 핵심 화면은 기기 조회 직후 표시
                 setLoading(false);
+
+                // 서로 기다리지 않고 독립적으로 실행
+                loadAiAdvice(found);
+                loadNotices();
+            } catch (e) {
+                console.error("[Initial device]", e);
+                setLoading(false);
+                setNoticesSettled(true);
             }
         };
+
         fetchData();
     }, [serialNumber, perfRunId, targetPortIndex]);
 
