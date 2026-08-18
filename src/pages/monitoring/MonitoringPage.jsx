@@ -635,9 +635,11 @@ function MonitoringPage() {
                         }
                     }
 
-                    // 초기 로드 시 한 번의 API 호출로 둘 다 세팅
+                    // 기기 데이터가 준비되면 모니터링 화면부터 표시
                     setVisionAiLoading(true);
                     setAdviceAiLoading(true);
+                    setLoading(false);
+
                     const representativePlant = found.plants?.find(p => p.species) ?? null;
                     const advice = await measureMonitoringApi(
                         perfRunId,
@@ -651,6 +653,10 @@ function MonitoringPage() {
                     markMonitoringPerformance(perfRunId, "ai_advice_settled", {
                         hasAdvice: Boolean(advice),
                     });
+                }
+
+                if (!found) {
+                    setLoading(false);
                 }
 
                 const noticeRes = await measureMonitoringApi(perfRunId, "notices", getAllNoticesApi);
