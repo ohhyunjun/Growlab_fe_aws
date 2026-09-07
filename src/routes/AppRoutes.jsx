@@ -14,6 +14,8 @@ import DiaryPage from "../pages/diary/DiaryPage";
 import MonitoringPage from "../pages/monitoring/MonitoringPage";
 import MarketPricePage from "../pages/marketprice/Marketpricepage";
 import AdminPage from "../pages/admin/AdminPage";
+import ForgotPasswordPage from "../pages/auth/ForgotPasswordPage";
+import FindIdPage from "../pages/auth/FindIdPage";
 
 function AppRoutes() {
     return (
@@ -36,6 +38,8 @@ function AppRoutes() {
 
             {/* 인증 관련 */}
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/find-id" element={<FindIdPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/signup" element={<SignUpPage />} />
 
             {/* 마이페이지 및 알림 (로그인 필요) */}

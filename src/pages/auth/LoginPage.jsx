@@ -76,6 +76,13 @@ function LoginPage() {
                     >
                         {loading ? "로그인 중..." : "로그인"}
                     </button>
+
+                    {/* ✅ 아이디/비밀번호 찾기 링크 */}
+                    <div className="flex items-center justify-center gap-3 text-xs text-gray-400">
+                        <Link to="/find-id" className="hover:text-green-600 hover:underline">아이디 찾기</Link>
+                        <span className="text-gray-200">|</span>
+                        <Link to="/forgot-password" className="hover:text-green-600 hover:underline">비밀번호 찾기</Link>
+                    </div>
                 </form>
 
                 <p className="text-center text-sm text-gray-400 mt-6">
