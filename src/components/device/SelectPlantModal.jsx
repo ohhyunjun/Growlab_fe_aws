@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { getAllSpeciesApi } from "../../api/speciesApi";
+import { createPlantApi } from "../../api/plantApi";
 import { updateDeviceSpeciesApi } from "../../api/deviceApi";
 
 const CATEGORY_FILTERS = ["전체", "채소", "허브", "과일", "관상식물"];
@@ -41,14 +42,18 @@ const DIFFICULTY_COLOR = {
     HARD:   "bg-red-100 text-red-600",
 };
 
-function SelectPlantModal({ serialNumber, onClose, onSuccess }) {
+function SelectPlantModal({ serialNumber, portIndex, onClose, onSuccess }) {
     const [species, setSpecies]         = useState([]);
     const [selected, setSelected]       = useState(null);
     const [search, setSearch]           = useState("");
     const [category, setCategory]       = useState("전체");
+    const [plantName, setPlantName]     = useState("");
     const [loading, setLoading]         = useState(false);
     const [fetchLoading, setFetchLoading] = useState(true);
     const [error, setError]             = useState("");
+
+    // portIndex가 null/undefined → 기기 품종 선택 전용 모드
+    const isSpeciesOnlyMode = portIndex === null || portIndex === undefined;
 
     useEffect(() => {
         getAllSpeciesApi()
@@ -59,6 +64,7 @@ function SelectPlantModal({ serialNumber, onClose, onSuccess }) {
 
     const handleSelect = (sp) => {
         setSelected(sp);
+        setPlantName(sp.name || sp.koreanName || "");
         setError("");
     };
 
@@ -70,14 +76,35 @@ function SelectPlantModal({ serialNumber, onClose, onSuccess }) {
 
     const handleSubmit = async () => {
         if (!selected) return;
+        if (!isSpeciesOnlyMode && !plantName.trim()) {
+            setError("식물 이름을 입력해주세요.");
+            return;
+        }
 
         setLoading(true);
         setError("");
 
         try {
-            await updateDeviceSpeciesApi(serialNumber, selected.id);
-            onSuccess(selected.id, selected.name || selected.koreanName);
-            onClose();
+            if (isSpeciesOnlyMode) {
+                // ✅ 품종 선택 모드: DB에 기기 대표 품종 저장 후 콜백
+                await updateDeviceSpeciesApi(serialNumber, selected.id);
+                onSuccess(selected.id, selected.name || selected.koreanName);
+                onClose();
+            } else {
+                // 포트 등록 모드: 기존대로 식물 생성
+                await createPlantApi({
+                    name:        plantName.trim(),
+                    stageIndex:  0, // ✅ plantStage: "SEED" -> stageIndex: 0 (첫 단계)으로 교체
+                    plantedAt:   new Date().toISOString(),
+                    germinatedAt: null,
+                    maturedAt:   null,
+                    speciesId:   selected.id,
+                    serialNumber,
+                    portIndex,
+                });
+                onSuccess();
+                onClose();
+            }
         } catch (err) {
             setError(
                 err.response?.data?.message ||
@@ -99,9 +126,11 @@ function SelectPlantModal({ serialNumber, onClose, onSuccess }) {
                 <div className="flex-shrink-0 flex items-center gap-3 px-5 py-4 border-b border-gray-100">
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">←</button>
                     <h2 className="text-base font-bold text-gray-800">식물 선택</h2>
-                    <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
-                        이 기기의 재배 품종을 선택하세요
-                    </span>
+                    {isSpeciesOnlyMode && (
+                        <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                            이 기기의 재배 품종을 선택하세요
+                        </span>
+                    )}
                     <div className="ml-auto flex items-center gap-2">
                         <span className="text-sm font-semibold text-green-600">🌱 GrowLab</span>
                     </div>
@@ -231,6 +260,15 @@ function SelectPlantModal({ serialNumber, onClose, onSuccess }) {
                                             <div className="text-sm font-bold text-gray-700 mt-0.5">{DIFFICULTY_LABEL[selected.difficulty] || selected.difficulty}</div>
                                         </div>
                                     )}
+                                    {/* ✅ 이 품종의 생육 단계 목록 표시 */}
+                                    {selected.stageNames && selected.stageNames.length > 0 && (
+                                        <div className="bg-gray-50 rounded-lg p-2.5 text-center">
+                                            <div className="text-xs text-gray-400">🌾 생육 단계 ({selected.stageNames.length}단계)</div>
+                                            <div className="text-xs font-medium text-gray-700 mt-0.5">
+                                                {selected.stageNames.join(" → ")}
+                                            </div>
+                                        </div>
+                                    )}
                                     {selected.aiPromptGuideline && (
                                         <p className="text-xs text-gray-500 leading-relaxed text-center">{selected.aiPromptGuideline}</p>
                                     )}
@@ -248,6 +286,22 @@ function SelectPlantModal({ serialNumber, onClose, onSuccess }) {
                                     )}
                                 </div>
 
+                                {/* 포트 등록 모드일 때만 이름 입력 */}
+                                {!isSpeciesOnlyMode && (
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">내 식물 이름</label>
+                                        <input
+                                            type="text"
+                                            value={plantName}
+                                            onChange={e => setPlantName(e.target.value)}
+                                            placeholder="예: 우리집 딸기"
+                                            maxLength={20}
+                                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                                        />
+                                        <p className="text-xs text-gray-400 mt-1">최대 20자</p>
+                                    </div>
+                                )}
+
                                 {error && (
                                     <div className="bg-red-50 text-red-500 text-xs rounded-lg px-3 py-2">{error}</div>
                                 )}
@@ -259,7 +313,9 @@ function SelectPlantModal({ serialNumber, onClose, onSuccess }) {
                                 >
                                     {loading
                                         ? "처리 중..."
-                                        : "이 품종으로 설정!"}
+                                        : isSpeciesOnlyMode
+                                            ? "이 품종으로 설정!"
+                                            : "이 식물로 재배 시작!"}
                                 </button>
                             </div>
                         )}
