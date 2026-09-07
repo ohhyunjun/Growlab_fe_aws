@@ -263,11 +263,12 @@ function HomePage() {
                 alert("포트 제어에 실패했습니다.");
             }
         } else {
-            // 식물의 품종은 백엔드에서 Device를 통해 조회
+            // ✅ 서버에서 받은 speciesId 사용
             if (!device.speciesId) { alert("먼저 품종을 선택해주세요."); return; }
             try {
                 await createPlantApi({
                     name:        device.speciesName,
+                    speciesId:   device.speciesId,
                     serialNumber: device.serialNumber,
                     portIndex,
                     plantStage:  "SEED",
@@ -409,6 +410,7 @@ function HomePage() {
             {selectingSpeciesSerial && (
                 <SelectPlantModal
                     serialNumber={selectingSpeciesSerial}
+                    portIndex={null}
                     onClose={() => setSelectingSpeciesSerial(null)}
                     onSuccess={handleSpeciesSelected}
                 />
