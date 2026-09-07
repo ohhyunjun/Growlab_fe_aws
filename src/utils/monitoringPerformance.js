@@ -19,7 +19,7 @@ const writeJson = (key, value) => {
     try {
         sessionStorage.setItem(key, JSON.stringify(value));
     } catch {
-        // Ignore storage failures; performance logging should never break the app.
+        // 성능 기록 실패가 실제 화면 동작에 영향을 주지 않도록 무시한다.
     }
 };
 
@@ -48,7 +48,7 @@ const storeCompletedRun = (run) => {
     try {
         sessionStorage.removeItem(ACTIVE_RUN_KEY);
     } catch {
-        // Ignore storage failures; performance logging should never break the app.
+        // 성능 기록 실패가 실제 화면 동작에 영향을 주지 않도록 무시한다.
     }
 };
 
