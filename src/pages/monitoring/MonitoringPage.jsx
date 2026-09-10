@@ -11,6 +11,7 @@ import {
     markMonitoringPerformance,
     measureMonitoringApi,
 } from "../../utils/monitoringPerformance";
+import { resolveRanges, isInRange, scoreSensor } from "../../utils/sensorRange";
 
 const SPECIES_EMOJI = {
     "방울토마토": "🍅", "청상추": "🥬", "적상추": "🥬",
@@ -114,8 +115,9 @@ const parseAiAnalysis = (adviceText) => {
 };
 
 // ── Vision AI 분석 점수 계산 (센서 데이터 기반) ───────────────
-const calcVisionScore = (sensorData) => {
+const calcVisionScore = (sensorData, ranges) => {
     const { temperature, humidity, ph, tds, water_level_status } = sensorData;
+    const activeRanges = ranges || resolveRanges(null);
 
     const validCount = [
         temperature,
@@ -138,73 +140,16 @@ const calcVisionScore = (sensorData) => {
     let score = 100;
     const issues = [];
 
-    // ===== 온도 (최적 23도) =====
-    if (temperature != null) {
-        const diff = Math.abs(temperature - 23);
+    const applySensorScore = (value, range, label) => {
+        const { deduct, severity } = scoreSensor(value, range);
+        score -= deduct;
+        if (severity) issues.push(`${label} ${severity}`);
+    };
 
-        if (diff <= 2) {
-            // 적정 범위: 점수 유지
-        } else if (diff <= 4) score -= 3;
-        else if (diff <= 6) score -= 8;
-        else if (diff <= 8) {
-            score -= 15;
-            issues.push("온도 주의");
-        } else {
-            score -= 25;
-            issues.push("온도 위험");
-        }
-    } else score -= 5;
-
-    // ===== 습도 (최적 65%) =====
-    if (humidity != null) {
-        const diff = Math.abs(humidity - 65);
-
-        if (diff <= 10) {
-            // 적정 범위: 점수 유지
-        } else if (diff <= 15) score -= 3;
-        else if (diff <= 20) score -= 8;
-        else if (diff <= 25) {
-            score -= 15;
-            issues.push("습도 주의");
-        } else {
-            score -= 25;
-            issues.push("습도 위험");
-        }
-    } else score -= 5;
-
-    // ===== pH (최적 6.0) =====
-    if (ph != null) {
-        const diff = Math.abs(ph - 6.0);
-
-        if (diff <= 0.3) {
-            // 적정 범위: 점수 유지
-        } else if (diff <= 0.6) score -= 3;
-        else if (diff <= 1.0) score -= 8;
-        else if (diff <= 1.5) {
-            score -= 15;
-            issues.push("pH 주의");
-        } else {
-            score -= 25;
-            issues.push("pH 위험");
-        }
-    } else score -= 5;
-
-    // ===== TDS (최적 1000ppm) =====
-    if (tds != null) {
-        const diff = Math.abs(tds - 1000);
-
-        if (diff <= 100) {
-            // 적정 범위: 점수 유지
-        } else if (diff <= 200) score -= 3;
-        else if (diff <= 300) score -= 8;
-        else if (diff <= 500) {
-            score -= 15;
-            issues.push("양액 주의");
-        } else {
-            score -= 25;
-            issues.push("양액 위험");
-        }
-    } else score -= 5;
+    applySensorScore(temperature, activeRanges.temp, "온도");
+    applySensorScore(humidity, activeRanges.humidity, "습도");
+    applySensorScore(ph, activeRanges.ph, "pH");
+    applySensorScore(tds, activeRanges.tds, "양액");
 
     // ===== 수위 =====
     if (water_level_status === false) {
@@ -1120,10 +1065,11 @@ function MonitoringPage() {
     const { temperature: temp, humidity, ph, tds, water_level_status } = sensorData;
     const waterOk      = water_level_status === true;
     const waterHasData = water_level_status !== null;
-    const tempOk  = temp     !== null && temp     >= 18 && temp     <= 28;
-    const humidOk = humidity !== null && humidity >= 50 && humidity <= 80;
-    const phOk    = ph       !== null && ph       >= 5.5 && ph      <= 7.0;
-    const tdsOk   = tds      !== null && tds      >= 200 && tds     <= 800;
+    const ranges  = resolveRanges(device);
+    const tempOk  = isInRange(temp, ranges.temp);
+    const humidOk = isInRange(humidity, ranges.humidity);
+    const phOk    = isInRange(ph, ranges.ph);
+    const tdsOk   = isInRange(tds, ranges.tds);
 
     const portStatus = device.portStatus || "00000000";
     const selectedPlant = device.plants?.find(p => p.portIndex === selectedPort) ?? null;
@@ -1143,7 +1089,7 @@ function MonitoringPage() {
         : null;
 
     // 센서 기반 점수 계산
-    const visionScore = calcVisionScore(sensorData);
+    const visionScore = calcVisionScore(sensorData, ranges);
 
     return (
         <div className="min-h-screen bg-gray-50">

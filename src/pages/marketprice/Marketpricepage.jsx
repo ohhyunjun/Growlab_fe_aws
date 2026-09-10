@@ -20,7 +20,7 @@ const ITEMS = [
 ];
 
 /**
- * 날짜별 평균 계산 후 최근 7일만 반환
+ * 날짜별 평균 계산 후 최근 7개 거래일만 반환
  */
 function aggregateByDate(priceHistory) {
     if (!priceHistory || priceHistory.length === 0) return [];
@@ -84,10 +84,9 @@ function MiniBarChart({ history, marketType }) {
 function PriceCard({ item, onClick, isSelected, marketType }) {
     const [retail, setRetail] = useState(null);
     const [weekly, setWeekly] = useState(null);
-    const [status, setStatus] = useState("idle");
+    const [status, setStatus] = useState("loading");
 
     useEffect(() => {
-        setStatus("loading");
         Promise.all([
             getLatestPrice(item.itemCode, item.kindCode, marketType),
             getWeeklyPrice(item.itemCode, item.kindCode, marketType),
@@ -102,6 +101,8 @@ function PriceCard({ item, onClick, isSelected, marketType }) {
 
     const trend = getPriceTrend(weekly);
     const aggregatedHistory = aggregateByDate(weekly?.priceHistory);
+    const firstHistoryDate = aggregatedHistory[0]?.date?.slice(5).replace("-", "/");
+    const lastHistoryDate = aggregatedHistory.at(-1)?.date?.slice(5).replace("-", "/");
 
     const price = retail?.currentPrice;
     const unit  = retail?.unit ?? weekly?.unit;
@@ -149,7 +150,7 @@ function PriceCard({ item, onClick, isSelected, marketType }) {
                     </div>
                     <MiniBarChart history={aggregatedHistory} marketType={marketType} />
                     <div className="flex justify-between text-[10px] text-gray-300 mt-1">
-                        <span>6일 전</span><span>오늘</span>
+                        <span>{firstHistoryDate ?? "-"}</span><span>{lastHistoryDate ?? "-"}</span>
                     </div>
                     <p className="text-[10px] text-gray-300 mt-1.5 text-right">
                         단위: {unit ?? "-"}
@@ -173,6 +174,7 @@ function DetailPanel({ item, latest, weekly, onClose, marketType }) {
     const trend   = getPriceTrend(weekly);
     const history = aggregateByDate(weekly?.priceHistory);
     const max     = Math.max(...history.map(d => d.price ?? 0), 1);
+    const currentPrice = latest?.currentPrice ?? weekly?.currentPrice;
 
     // 7일 평균: priceHistory 기준 직접 계산
     const avgPrice = history.length > 0
@@ -203,19 +205,19 @@ function DetailPanel({ item, latest, weekly, onClose, marketType }) {
                 <button onClick={onClose} className="text-gray-300 hover:text-gray-500 text-lg">✕</button>
             </div>
 
-            {/* 현재가 + 7일 평균 */}
+            {/* 현재가 + 최근 7개 거래일 평균 */}
             {weekly && (
                 <div className="grid grid-cols-2 gap-3">
                     <div className={`rounded-2xl p-4 text-center ${isWholesale ? "bg-blue-50" : "bg-green-50"}`}>
                         <p className="text-xs text-gray-400 mb-1">현재가</p>
                         <p className={`text-2xl font-bold ${isWholesale ? "text-blue-600" : "text-green-600"}`}>
-                            {weekly.currentPrice != null
-                                ? weekly.currentPrice.toLocaleString() : "-"}
+                            {currentPrice != null
+                                ? currentPrice.toLocaleString() : "-"}
                         </p>
                         <p className={`text-xs ${isWholesale ? "text-blue-400" : "text-green-400"}`}>원</p>
                     </div>
                     <div className="bg-gray-50 rounded-2xl p-4 text-center">
-                        <p className="text-xs text-gray-400 mb-1">7일 평균</p>
+                        <p className="text-xs text-gray-400 mb-1">7거래일 평균</p>
                         <p className="text-2xl font-bold text-gray-600">
                             {avgPrice != null ? avgPrice.toLocaleString() : "-"}
                         </p>
@@ -262,7 +264,7 @@ function DetailPanel({ item, latest, weekly, onClose, marketType }) {
             {/* 주간 바 차트 */}
             {history.length > 0 ? (
                 <div className="overflow-visible">
-                    <h3 className="text-xs font-semibold text-gray-500 mb-3">📈 최근 7일 가격 추이</h3>
+                    <h3 className="text-xs font-semibold text-gray-500 mb-3">📈 최근 7개 거래일 가격 추이</h3>
                     <div className="flex items-end gap-2 h-28 overflow-visible">
                         {history.map((d, i) => (
                             <div key={i} className="flex-1 flex flex-col items-center group relative">
