@@ -6,6 +6,7 @@ import { createPlantApi, deletePlantApi } from "../../api/plantApi";
 import AddDeviceModal from "../../components/device/AddDeviceModal";
 import SelectPlantModal from "../../components/device/SelectPlantModal";
 import { startMonitoringPerformanceRun } from "../../utils/monitoringPerformance";
+import { resolveRanges, isInRange } from "../../utils/sensorRange";
 
 const ICONS = ["🍓", "🌿", "🌱", "🌻", "🍅", "🥬", "🌶️", "🌸"];
 
@@ -144,10 +145,11 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
             {/* 센서 수치 */}
             <div className="grid grid-cols-3 gap-2 text-center">
                 {(() => {
-                    const tempOk  = temp     !== null && temp     >= 18  && temp     <= 28;
-                    const humidOk = humidity !== null && humidity >= 50  && humidity <= 80;
-                    const phOk    = ph       !== null && ph       >= 5.5 && ph       <= 7.0;
-                    const tdsOk   = tds      !== null && tds      >= 200 && tds      <= 800;
+                    const ranges  = resolveRanges(device);
+                    const tempOk  = isInRange(temp, ranges.temp);
+                    const humidOk = isInRange(humidity, ranges.humidity);
+                    const phOk    = isInRange(ph, ranges.ph);
+                    const tdsOk   = isInRange(tds, ranges.tds);
 
                     const getColor = (hasData, isOk) => !hasData ? "text-gray-300" : isOk ? "text-green-500" : "text-orange-400";
                     const getBg    = (hasData, isOk) => !hasData ? "bg-gray-50"    : isOk ? "bg-green-50"   : "bg-orange-50";
@@ -190,21 +192,23 @@ function HomePage() {
 
     const navigate = useNavigate();
 
-    useEffect(() => {
-        const token = localStorage.getItem("token");
-        if (!token) return;
-        fetchDevices();
-        getUnreadCountApi()
-            .then(res => setUnreadCount(res.data))
-            .catch(err => console.error(err));
-    }, []);
-
     const fetchDevices = async () => {
         try {
             const res = await getUserDevicesApi();
             setDevices(res.data);
         } catch (err) { console.error(err); }
     };
+
+    useEffect(() => {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        getUserDevicesApi()
+            .then(res => setDevices(res.data))
+            .catch(err => console.error(err));
+        getUnreadCountApi()
+            .then(res => setUnreadCount(res.data))
+            .catch(err => console.error(err));
+    }, []);
 
     const getSortedDevices = () => {
         const copy = [...devices];
