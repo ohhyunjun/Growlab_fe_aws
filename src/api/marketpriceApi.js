@@ -16,7 +16,7 @@ export const getLatestPrice = (itemCode, kindCode, marketType = "RETAIL") => {
 };
 
 /**
- * 최근 7일 가격 조회
+ * 최근 7개 거래일 가격 조회
  * @param {string} itemCode
  * @param {string} kindCode
  * @param {"RETAIL"|"WHOLESALE"} marketType
