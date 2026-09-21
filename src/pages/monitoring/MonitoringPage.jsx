@@ -4,6 +4,7 @@ import { getUserDevicesApi, updateLedApi, updatePhotoIntervalApi } from "../../a
 import { getAllNoticesApi } from "../../api/noticeApi";
 import { getSseStreamUrl } from "../../api/sensorApi";
 import { getLatestPredictionApi } from "../../api/predictionApi";
+import { getGrowthTrendApi } from "../../api/photoApi";
 import {
     finishMonitoringPerformanceRun,
     getActiveMonitoringPerformanceRun,
@@ -186,6 +187,41 @@ const calcVisionScore = (sensorData, ranges) => {
     };
 };
 
+// ── 포트 단위 건강 진단 (하이브리드) ─────────────────────────────
+// 기기 공통 환경 점수(base)를 바탕에 깔고, 선택 포트의 사진 신호로 가감한다:
+//  · 질병 검출(plant.diseaseResult) → 큰 감점 + 질병 위험 '높음'
+//  · 또래 대비 성장 격차(trend.gapPercent) → 정체면 감점, 크게 앞서면 소폭 가점
+// 사진 신호(성장 곡선/질병)가 전혀 없으면 가짜 점수 대신 '진단 대기'로 표시한다.
+const calcPortHealth = (base, plant, trend) => {
+    if (!plant) return { portDataAvailable: false, reason: "no_plant" };
+    const diseased = isDiseased(plant.diseaseResult);
+    const gap = trend?.gapPercent;                                  // 또래 대비 %, null 가능
+    const hasGrowth = Array.isArray(trend?.points) && trend.points.length > 0;
+    if (!diseased && !hasGrowth) return { portDataAvailable: false, reason: "no_vision" };
+
+    let score = base.score;
+    const issues = [...(base.issues || [])];
+    if (diseased) { score -= 35; issues.unshift(`질병 의심(${plant.diseaseResult})`); }
+    if (gap != null) {
+        if (gap <= -15) {
+            // 격차가 클수록 더 감점 (−15%→15점, 상한 35점). 환경이 좋아도 성장 정체는 뚜렷이 반영.
+            const pen = Math.min(35, 15 + (Math.abs(gap) - 15) * 0.3);
+            score -= pen;
+            issues.unshift(`성장 정체 ${gap}%`);
+        }
+        else if (gap <= -5) { score -= 7; }
+        else if (gap >= 10) { score += 3; }
+    }
+    score = Math.max(0, Math.min(100, Math.round(score)));
+
+    const grade = score >= 95 ? "S" : score >= 85 ? "A" : score >= 75 ? "B" : score >= 65 ? "C" : "D";
+    let growthStatus = score >= 85 ? "정상" : score >= 65 ? "주의" : "위험";
+    if ((diseased || (gap != null && gap <= -15)) && growthStatus === "정상") growthStatus = "주의";
+    const diseaseRisk = diseased ? "높음" : (gap != null && gap <= -15) ? "보통" : base.diseaseRisk;
+
+    return { portDataAvailable: true, score, grade, growthStatus, diseaseRisk, issues };
+};
+
 function GrowthSummary({ text }) {
     const [expanded, setExpanded] = useState(false);
     const isLong = text.length > 60;
@@ -237,27 +273,24 @@ const getNextStageForecast = (plant, prediction, stageNames, stageDurationDays =
         && pointDate && rangeStart && rangeEnd
         && rangeStart >= plantedAt && rangeStart <= pointDate && pointDate <= rangeEnd;
 
-    if (validPrediction) {
-        return {
-            stage,
-            stageLabel: stageNames[stage],
-            baselineDate: parseDate(prediction.baselineAt) || baselineDate,
-            pointDate,
-            range: { start: rangeStart, end: rangeEnd },
-            aiReady: prediction.predictionMode === "LIGHTGBM_AI",
-            source: prediction.predictionMode === "LIGHTGBM_AI" ? "AI 예측"
-                : prediction.predictionMode === "STATISTICAL_WARMUP" ? "초기 통계 예상" : "서버 예측",
-        };
-    }
+    // 화면 주값은 항상 산술 참고 일정(품종 기준). AI 예측은 섀도로만 기록/표시하고 화면 날짜를 바꾸지 않는다.
+    // (AI-Hub 자료에서만 검증됐고 GrowLab 성능은 미확인이라, 화면 날짜 보정은 자체 데이터 확인 후 결정)
+    const refBaseline = parseDate(prediction?.baselineAt) || baselineDate;
+    const shadow = validPrediction ? {
+        date: pointDate,                              // AI expectedAt (섀도)
+        range: { start: rangeStart, end: rangeEnd },  // AI 예측 범위 (섀도)
+        mode: prediction.predictionMode,              // LIGHTGBM_AI / STATISTICAL_WARMUP / ...
+    } : null;
 
     return {
         stage,
         stageLabel: stageNames[stage],
-        baselineDate,
-        pointDate: baselineDate,
-        range: null,
-        aiReady: false,
+        baselineDate: refBaseline,
+        pointDate: refBaseline,        // 화면 주값 = 산술 참고 일정 (AI 유무와 무관하게 항상)
+        range: null,                   // 화면엔 산술만 (AI 범위는 섀도)
+        aiReady: false,                // 화면 주값은 AI가 아님
         source: "품종 기준 일정",
+        shadow,                        // AI 섀도 (검증용, 화면 날짜에 미반영)
     };
 };
 
@@ -317,9 +350,8 @@ function GrowthTimelineChart({
     const activeForecast = getNextStageForecast(
         { ...selectedPlant, stageIndex: currentStageIdx }, prediction, displayStageNames, stageDurationDays,
     );
-    const activeForecastShift = activeForecast?.aiReady
-        ? describeDateShift(activeForecast.baselineDate, activeForecast.pointDate) : null;
-    const forecastExpired = activeForecast?.range && activeForecast.range.end < today;
+    const shadowShift = activeForecast?.shadow
+        ? describeDateShift(activeForecast.baselineDate, activeForecast.shadow.date) : null;
     const rangeText = (range) => range ? `${fmtDate(range.start)} ~ ${fmtDate(range.end)}` : "-";
     const endCandidates = [
         today, maturedAt, activeForecast?.pointDate, activeForecast?.range?.end, addDays(today, 7),
@@ -398,12 +430,12 @@ function GrowthTimelineChart({
                         <span className="hidden h-8 w-px bg-gray-200 sm:block" />
                         <div>
                             <p className="text-[9px] font-medium text-gray-400 sm:text-[10px]">
-                                예상 기간
+                                AI 섀도 (검증 중 · 화면 미반영)
                             </p>
-                            <p className="mt-0.5 text-xs font-bold text-amber-700 sm:text-sm">
-{activeForecast.range
-                                    ? `${fmtReadableDate(activeForecast.range.start)} ~ ${fmtReadableDate(activeForecast.range.end)}`
-                                    : "센서 예측 수집 중"}
+                            <p className="mt-0.5 text-xs font-bold text-gray-500 sm:text-sm">
+{activeForecast.shadow?.date
+                                    ? fmtReadableDate(activeForecast.shadow.date)
+                                    : "센서 이력 수집 중"}
                             </p>
                         </div>
                         <span className={`ml-auto rounded-full px-2 py-1 text-[9px] font-semibold sm:text-[10px] ${
@@ -416,12 +448,9 @@ function GrowthTimelineChart({
                     </div>
                     <p className="mt-2 border-t border-gray-200/70 pt-2 text-[10px] leading-relaxed text-gray-400">
                         {activeForecast.baselineDate
-                            ? `품종 기준일 ${fmtReadableDate(activeForecast.baselineDate)}` : "품종 기준 일정이 아직 없어요."}
-                        {activeForecastShift ? ` · ${activeForecastShift}` : ""}
-                        {forecastExpired
-                            ? " · 예상 기간이 지났어요. 최근 촬영과 다음 예측을 확인해 주세요."
-                            : !activeForecast.range ? " · 예측 범위는 서버 결과가 도착하면 표시해요." : ""}
-                        {activeForecast.source === "초기 통계 예상" ? " · AI 보정을 위한 센서 이력을 모으고 있어요." : ""}
+                            ? `품종 기준 참고 일정 ${fmtReadableDate(activeForecast.baselineDate)}` : "품종 기준 일정이 아직 없어요."}
+                        {shadowShift ? ` · AI 섀도는 ${shadowShift}로 보지만 화면 날짜엔 반영하지 않아요` : ""}
+                        {activeForecast.shadow ? "" : " · AI 섀도는 센서 이력이 쌓이면 표시해요."}
                     </p>
                 </div>
             ) : (
@@ -646,6 +675,239 @@ aria-label={`${displaySpecies}의 생육 단계와 다음 단계 예상 날짜 �
                 </svg>
             </div>
         </section>
+    );
+}
+
+// ── 확장 기능 공통 헬퍼 ───────────────────────────────────────
+// 질병 라벨 판정 (BE isHealthyLabel과 동일: healthy/normal/정상/no_detection은 정상으로 본다)
+const HEALTHY_LABELS = new Set(["", "no_detection", "healthy", "normal", "정상"]);
+const isDiseased = (label) => {
+    if (label == null) return false;
+    return !HEALTHY_LABELS.has(String(label).trim().toLowerCase());
+};
+
+const HEALTH_COLOR = { good: "#22c55e", warn: "#f59e0b", bad: "#ef4444", empty: "#d1d5db" };
+
+// 포트 점(dot) 색: 질병=빨강, 식물없음=회색, 그 외 초록. (성장정체 주의는 선택 포트 상세에서만 표시)
+const portDotHealth = (plant) => {
+    if (!plant) return "empty";
+    if (isDiseased(plant.diseaseResult)) return "bad";
+    return "good";
+};
+
+// 선택 포트의 종합 헬스 (질병 > 성장정체 > 정상)
+const resolvePortHealth = (plant, gapPercent) => {
+    if (!plant) return "empty";
+    if (isDiseased(plant.diseaseResult)) return "bad";
+    if (gapPercent != null && gapPercent <= -15) return "warn";
+    return "good";
+};
+
+// 다음 단계 예상 — 차트 대신 텍스트로 제공
+function NextStageReadout({ selectedPlant, prediction, stageNames, stageDurationDays }) {
+    if (!selectedPlant) {
+        return <EmptyTimeline>이 포트에 식물이 없어요</EmptyTimeline>;
+    }
+    const currentStageIdx = Number(selectedPlant.stageIndex ?? 0);
+    const isLastStage = currentStageIdx >= stageNames.length - 1;
+    const forecast = getNextStageForecast(
+        { ...selectedPlant, stageIndex: currentStageIdx }, prediction, stageNames, stageDurationDays,
+    );
+    const badges = stageNames.map((name, i) => {
+        const state = i < currentStageIdx ? "done" : i === currentStageIdx ? "now" : "future";
+        const cls = state === "done" ? "bg-green-500 text-white"
+            : state === "now" ? "bg-green-100 text-green-700 ring-1 ring-green-400"
+            : "bg-gray-200 text-gray-400";
+        return { name, cls };
+    });
+
+    return (
+        <div className="rounded-xl bg-gray-50 p-4">
+            <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] font-semibold text-gray-500">다음 단계 예상</span>
+                <span className="text-[10px] text-gray-400 border border-dashed border-gray-300 rounded-full px-2 py-0.5">
+                    {forecast ? forecast.source : "통계 기반 예상"}
+                </span>
+            </div>
+            {isLastStage ? (
+                <div className="flex items-end gap-2">
+                    <span className="text-2xl font-bold text-green-600">수확 적기</span>
+                    <span className="text-xs text-gray-400 pb-1">마지막 단계예요</span>
+                </div>
+            ) : forecast?.pointDate ? (
+                <div className="flex items-end gap-2">
+                    <span className="text-3xl font-bold text-gray-800">{fmtReadableDate(forecast.pointDate)}</span>
+                    <span className="text-xs text-gray-400 pb-1.5">{forecast.stageLabel} 예상</span>
+                </div>
+            ) : (
+                <div className="text-sm text-gray-400 py-2">예상 시점을 계산 중이에요</div>
+            )}
+            <div className="flex flex-wrap items-center gap-1.5 mt-2.5 text-[11px]">
+                {badges.map((b, i) => (
+                    <span key={b.name} className="inline-flex items-center gap-1.5">
+                        <span className={`px-2 py-0.5 rounded-md font-medium ${b.cls}`}>{b.name}</span>
+                        {i < badges.length - 1 && <span className="text-gray-300">→</span>}
+                    </span>
+                ))}
+            </div>
+            <p className="mt-2 text-[10px] text-gray-400">품종 기준 + 이 포트 경과시간으로 계산 · 참고용</p>
+        </div>
+    );
+}
+
+// 성장 추이 SVG (이 포트 실선 + 또래 평균 점선). peer 값이 null이면 그 구간은 건너뛴다.
+function GrowthTrendSvg({ points, peerPoints, color }) {
+    const vals = (points || []).map(p => p?.value).filter(v => v != null);
+    if (!vals.length) {
+        return <div className="h-12 flex items-center text-[11px] text-gray-300">아직 관측 데이터가 없어요</div>;
+    }
+    const w = 240, h = 48;
+    const peerVals = (peerPoints || []).map(p => p?.value).filter(v => v != null);
+    const all = vals.concat(peerVals);
+    const mx = Math.max(...all), mn = Math.min(...all), r = (mx - mn) || 1;
+    const n = points.length;
+    const st = n > 1 ? w / (n - 1) : w;
+    const Y = v => h - 3 - ((v - mn) / r) * (h - 8);
+    const path = (arr) => {
+        let d = "", started = false;
+        (arr || []).forEach((pt, i) => {
+            const v = pt?.value;
+            if (v == null) { started = false; return; }
+            d += `${started ? "L" : "M"}${(i * st).toFixed(1)} ${Y(v).toFixed(1)} `;
+            started = true;
+        });
+        return d.trim();
+    };
+    const selfPath = path(points);
+    const peerPath = path(peerPoints);
+    const lastIdx = n - 1;
+    const lastV = points[lastIdx]?.value;
+    return (
+        <svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="block">
+            {peerPath && <path d={peerPath} fill="none" stroke="#9ca3af" strokeWidth="1.3" strokeDasharray="3 3" opacity="0.7" />}
+            <path d={selfPath} fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            {lastV != null && <circle cx={(lastIdx * st).toFixed(1)} cy={Y(lastV).toFixed(1)} r="3" fill={color} />}
+        </svg>
+    );
+}
+
+// 성장 추이 카드 (성장추이 SVG + 또래 순위/격차)
+function GrowthTrendCard({ trend, loading, color }) {
+    const points = trend?.points ?? [];
+    const peerPoints = trend?.peerPoints ?? [];
+    const rank = trend?.rank ?? null;
+    const portCount = trend?.portCount ?? null;
+    const gap = trend?.gapPercent ?? null;
+    const gapColor = gap == null ? "text-gray-400"
+        : gap >= 5 ? "text-green-600" : gap <= -15 ? "text-red-500" : gap < 0 ? "text-yellow-600" : "text-gray-500";
+    return (
+        <div className="rounded-xl bg-gray-50 p-4">
+            <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] font-semibold text-gray-500">성장 추이 <span className="text-[9px] font-normal text-gray-400">관측</span></span>
+                {rank != null && portCount ? <span className={`text-[11px] font-semibold ${gapColor}`}>{portCount}중 {rank}위</span> : null}
+            </div>
+            {loading ? (
+                <div className="h-12 flex items-center text-[11px] text-gray-300">불러오는 중...</div>
+            ) : (
+                <GrowthTrendSvg points={points} peerPoints={peerPoints} color={color} />
+            )}
+            <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-400">
+                <span className="flex items-center gap-1"><span className="w-3 h-0.5 rounded" style={{ background: color }} />이 포트</span>
+                <span className="flex items-center gap-1"><span className="w-3 border-t border-dashed border-gray-400" />또래 평균</span>
+                {gap != null && <span className={`ml-auto font-medium ${gapColor}`}>{gap > 0 ? "+" : ""}{gap}%</span>}
+            </div>
+        </div>
+    );
+}
+
+// 현재 관측 요약 (크기/질병/순위/격차)
+function PortObservation({ plant, trend }) {
+    if (!plant) {
+        return <div className="rounded-xl bg-gray-50 p-4 flex items-center justify-center text-[11px] text-gray-300">데이터 없음</div>;
+    }
+    const latest = trend?.latestRatio;
+    const rank = trend?.rank, portCount = trend?.portCount, gap = trend?.gapPercent;
+    const diseased = isDiseased(plant.diseaseResult);
+    const items = [
+        ["현재 크기", latest != null ? `${(latest * 100).toFixed(1)}%` : "-", "text-gray-700"],
+        ["질병 검출", diseased ? plant.diseaseResult : "정상", diseased ? "text-red-500" : "text-gray-700"],
+        ["또래 순위", rank != null && portCount ? `${portCount}중 ${rank}위` : "-", "text-gray-700"],
+        ["성장 격차", gap != null ? `${gap > 0 ? "+" : ""}${gap}%` : "-",
+            gap == null ? "text-gray-400" : gap >= 5 ? "text-green-600" : gap <= -15 ? "text-red-500" : gap < 0 ? "text-yellow-600" : "text-gray-500"],
+    ];
+    return (
+        <div className="rounded-xl bg-gray-50 p-4 grid grid-cols-2 gap-2 content-start">
+            {items.map(([k, v, c]) => (
+                <div key={k}>
+                    <div className="text-[10px] text-gray-400">{k}</div>
+                    <div className={`text-sm font-semibold ${c}`}>{v}</div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// AI 정밀 포트 분석 — '분석 요청' 버튼을 눌러야 이 포트의 센서·성장 데이터를 LLM에 보내고,
+// 응답을 받아 표시한다. 처음에는 결과 없이 버튼만 보인다(온디맨드 · 토큰 절약).
+function PortProblemBlock({ plant, trend, serialNumber, speciesId, speciesName, daysSincePlanted }) {
+    const [llm, setLlm] = useState(null);
+    const [llmLoading, setLlmLoading] = useState(false);
+    const [llmError, setLlmError] = useState(false);
+    if (!plant) return null;
+
+    const runDiagnosis = async () => {
+        setLlmLoading(true); setLlmError(false);
+        try {
+            const token = localStorage.getItem("token");
+            const res = await fetch("http://localhost:8080/api/ai/port-diagnosis", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                    serialNumber,
+                    speciesId: speciesId ?? null,
+                    speciesName: speciesName ?? null,
+                    portIndex: plant.portIndex,
+                    daysSincePlanted: daysSincePlanted ?? null,
+                    plantStage: plant.plantStage ?? null,
+                    gapPercent: trend?.gapPercent ?? null,
+                    rank: trend?.rank ?? null,
+                    portCount: trend?.portCount ?? null,
+                    currentSizePercent: trend?.latestRatio != null ? Math.round(trend.latestRatio * 1000) / 10 : null,
+                    diseaseResult: plant.diseaseResult ?? null,
+                }),
+            });
+            if (!res.ok) throw new Error();
+            const data = await res.json();
+            setLlm(data.advice || "분석 결과가 비어 있습니다.");
+        } catch {
+            setLlmError(true);
+        } finally {
+            setLlmLoading(false);
+        }
+    };
+
+    return (
+        <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
+            <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-[12.5px] text-gray-700">🤖 AI 정밀 포트 분석</span>
+                <button onClick={runDiagnosis} disabled={llmLoading}
+                    className="shrink-0 rounded-lg border border-emerald-300 bg-white px-3 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">
+                    {llmLoading ? "분석 중…" : llm ? "다시 분석" : "분석 요청"}
+                </button>
+            </div>
+
+            {!llm && !llmLoading && !llmError && (
+                <p className="mt-2 text-[11px] text-gray-400">‘분석 요청’을 누르면 이 포트의 센서·성장 데이터를 바탕으로 AI가 원인과 조치를 분석합니다.</p>
+            )}
+            {llmLoading && <p className="mt-2 text-[12px] text-gray-500">AI가 분석 중입니다…</p>}
+            {llmError && <p className="mt-2 text-[11px] text-red-500">분석을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</p>}
+            {llm && (
+                <div className="mt-2">
+                    <p className="text-[12px] text-gray-700 whitespace-pre-line leading-relaxed">{llm}</p>
+                    <p className="mt-2 text-[9px] text-gray-400">생성형 AI 추정 · 확정 진단 아님</p>
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -1026,6 +1288,21 @@ function MonitoringPage() {
         setTimeout(() => setSaveMessage(""), 2000);
     };
 
+    // 선택 포트의 성장 추이(관측 크기) + 또래 비교. 성장추이 카드/현재관측/문제분석이 공유.
+    const [growthTrend, setGrowthTrend] = useState(null);
+    const [growthTrendLoading, setGrowthTrendLoading] = useState(false);
+    useEffect(() => {
+        const hasPlant = device?.plants?.some(p => p.portIndex === selectedPort);
+        if (!serialNumber || !hasPlant) { setGrowthTrend(null); return; }
+        let alive = true;
+        setGrowthTrendLoading(true);
+        getGrowthTrendApi(serialNumber, selectedPort)
+            .then(res => { if (alive) setGrowthTrend(res.data); })
+            .catch(() => { if (alive) setGrowthTrend(null); })
+            .finally(() => { if (alive) setGrowthTrendLoading(false); });
+        return () => { alive = false; };
+    }, [serialNumber, selectedPort, device]);
+
     if (loading) return (
         <div className="flex items-center justify-center min-h-screen">
             <div className="text-gray-400 text-sm">로딩 중...</div>
@@ -1065,221 +1342,67 @@ function MonitoringPage() {
 
     // 센서 기반 점수 계산
     const visionScore = calcVisionScore(sensorData, ranges);
+    // 포트 단위 건강 진단: 환경 점수(visionScore)를 바탕으로 선택 포트의 사진 신호(질병·성장격차) 반영
+    const portHealth = calcPortHealth(visionScore, selectedPlant, growthTrend);
+
+    const selectedHealth = resolvePortHealth(selectedPlant, growthTrend?.gapPercent);
+    const selectedHealthColor = HEALTH_COLOR[selectedHealth];
 
     return (
         <div className="min-h-screen bg-gray-50">
-            {/* 헤더 */}
-            <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-3 flex items-center gap-3">
-                <button onClick={() => navigate("/")} className="text-gray-400 hover:text-gray-600 text-sm">←</button>
-                <span className="font-semibold text-gray-800 text-sm">{device.deviceNickname} 모니터링</span>
-                <span className="flex items-center gap-1 text-xs font-medium"
-                    style={{ color: sseConnected ? "#22c55e" : "#f59e0b" }}>
-                    <span className={`w-1.5 h-1.5 rounded-full inline-block ${sseConnected ? "bg-green-500 animate-pulse" : "bg-yellow-400"}`} />
-                    {sseConnected ? "실시간 연결" : "재연결 중..."}
-                </span>
+            {/* ── 고정: 네비 아래 상단바(실시간 연결). 내부는 네비와 동일 폭(max-w-7xl px-6) ── */}
+            <div className="bg-white border-b border-gray-100">
+                <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-3">
+                    <button onClick={() => navigate("/")} className="text-gray-400 hover:text-gray-600 text-sm">←</button>
+                    <span className="font-semibold text-gray-800 text-sm">{device.deviceNickname} 모니터링</span>
+                    <span className="flex items-center gap-1 text-xs font-medium"
+                        style={{ color: sseConnected ? "#22c55e" : "#f59e0b" }}>
+                        <span className={`w-1.5 h-1.5 rounded-full inline-block ${sseConnected ? "bg-green-500 animate-pulse" : "bg-yellow-400"}`} />
+                        {sseConnected ? "실시간 연결" : "재연결 중..."}
+                    </span>
+                </div>
             </div>
 
-            <div className="p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 max-w-screen-xl mx-auto lg:items-start">
+            <div className="max-w-7xl mx-auto px-6 py-5">
 
-                {/* 좌측 사이드바 */}
-                <div className="lg:col-span-3 flex flex-col gap-3">
-
-                    {/* 식물 정보 */}
-                    <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center text-2xl">{emoji}</div>
-                            <div>
-                                <div className="font-bold text-gray-800 text-sm">{deviceSpeciesName || "미등록"}</div>
-                                <div className="text-xs text-gray-400">{serialNumber} · 포트 {selectedPort + 1}</div>
-                            </div>
-                        </div>
-                        {selectedPlant ? (
-                            <div className="flex flex-col gap-2 text-xs">
-                                {[
-                                    { label: "재배 일수", value: daysSincePlanted !== null ? `${daysSincePlanted}일차` : "-" },
-                                    {
-                                        label: "생육 단계",
-                                        value: selectedPlant.stageName
-                                            || stageNames[Number(selectedPlant.stageIndex)]
-                                            || selectedPlant.plantStage
-                                            || "-",
-                                    },
-                                    { label: "품종", value: deviceSpeciesName || "-" },
-                                ].map(({ label, value }) => (
-                                    <div key={label} className="flex justify-between items-center py-1.5 border-b border-gray-50 last:border-0">
-                                        <span className="text-gray-400">{label}</span>
-                                        <span className="font-medium text-gray-700">{value}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="text-xs text-gray-400 text-center py-2">이 포트에 식물이 없어요</p>
-                        )}
-                    </div>
-
-                    {/* Vision AI 분석 — 센서 기반 실시간 점수 + AI 파싱 결과 */}
-                    <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm">🔍</span>
-                                <h2 className="text-sm font-semibold text-gray-700">Vision AI 분석</h2>
-                            </div>
-                            {/* Vision AI 전용 새로고침 버튼 */}
-                            <button
-                                onClick={() => handleRefreshVision(device, selectedPlant)}
-                                disabled={visionAiLoading}
-                                className="text-[10px] text-green-600 hover:text-green-700 font-medium disabled:text-gray-300 transition-colors"
-                            >
-                                {visionAiLoading ? "분석 중..." : "↻ 새로고침"}
-                            </button>
-                        </div>
-
-                        {/* 센서 기반 점수 — 항상 표시 */}
-                        <div className="flex items-center gap-3 mb-3 p-2.5 bg-gray-50 rounded-xl">
-                            <div className="relative w-12 h-12 flex-shrink-0">
-                                <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                                    <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" strokeWidth="3" />
-                                    <circle cx="18" cy="18" r="15.9" fill="none"
-                                        stroke={visionScore.score >= 80 ? "#22c55e" : visionScore.score >= 55 ? "#f59e0b" : "#ef4444"}
-                                        strokeWidth="3"
-                                        strokeDasharray={`${visionScore.score} 100`}
-                                        strokeLinecap="round" />
-                                </svg>
-                                <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-700">
-                                    {visionScore.score}
-                                </span>
-                            </div>
-                            <div>
-                                <p className="text-xs font-semibold text-gray-700">{visionScore.grade}</p>
-                                <p className="text-[10px] text-gray-400 mt-0.5">종합 건강 점수</p>
-                                {visionScore.issues.length > 0 && (
-                                    <p className="text-[10px] text-yellow-500 mt-0.5">
-                                        ⚠ {visionScore.issues.slice(0, 2).join(", ")}
-                                    </p>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* 생육 상태 / 질병 위험 — Vision AI 로딩 상태 사용 */}
-                        {visionAiLoading ? (
-                            <div className="flex flex-col gap-2">
-                                {["생육 상태", "질병 위험"].map(label => (
-                                    <div key={label} className="flex justify-between items-center py-1">
-                                        <span className="text-xs text-gray-400">{label}</span>
-                                        <span className="w-16 h-3 bg-gray-100 rounded animate-pulse" />
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="flex flex-col gap-1 text-xs">
-                                <div className="flex justify-between items-center py-1 border-b border-gray-50">
-                                    <span className="text-gray-400">생육 상태</span>
-                                    <span className={`font-medium ${
-                                        visionScore.growthStatus === "정상" ? "text-green-500" :
-                                        visionScore.growthStatus === "주의" ? "text-yellow-500" : "text-red-500"
-                                    }`}>
-                                        {visionScore.growthStatus === "정상" ? "✓ " : "⚠ "}
-                                        {visionScore.growthStatus}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between items-center py-1">
-                                    <span className="text-gray-400">질병 위험</span>
-                                    <span className={`font-medium ${
-                                        visionScore.diseaseRisk === "낮음" ? "text-green-500" :
-                                        visionScore.diseaseRisk === "보통" ? "text-yellow-500" : "text-red-500"
-                                    }`}>
-                                        {visionScore.diseaseRisk === "낮음" ? "✓ " : "⚠ "}
-                                        {visionScore.diseaseRisk}
-                                    </span>
-                                </div>
-                                {/* AI가 파싱한 생육 요약이 있으면 한 줄 표시 */}
-                                {aiAnalysis?.growth && <GrowthSummary text={aiAnalysis.growth} />}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* 최근 알림 */}
-                    <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm">🔔</span>
-                                <h2 className="text-sm font-semibold text-gray-700">최근 알림</h2>
-                            </div>
-                            {notices.length > 0 && (
-                                <span className="text-[10px] bg-green-100 text-green-600 font-semibold px-2 py-0.5 rounded-full">
-                                    {notices.length}
-                                </span>
-                            )}
-                        </div>
-                        <div className="min-h-[230px] flex flex-col">
-                            {notices.length === 0 ? (
-                                <div className="flex-1 flex flex-col items-center justify-center gap-2 text-gray-300">
-                                    <span className="text-2xl">🔕</span>
-                                    <p className="text-xs">새로운 알림이 없어요</p>
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="flex flex-col gap-3 text-xs text-gray-500 overflow-y-auto max-h-[250px] pr-1">
-                                        {notices.slice(0, noticeVisibleCount).map(notice => (
-                                            <div key={notice.id}
-                                                className={`border-l-2 pl-2 py-0.5 ${notice.isRead ? "border-gray-200" : "border-green-400"}`}>
-                                                <p className="font-medium text-gray-700">{notice.noticeType}</p>
-                                                <p className="mt-0.5 leading-relaxed">{notice.message}</p>
-                                                <p className="text-gray-300 mt-0.5">{notice.deviceSerial}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    {noticeVisibleCount < notices.length && (
-                                        <button onClick={() => setNoticeVisibleCount(prev => prev + 10)}
-                                            className="mt-3 w-full text-xs text-gray-400 hover:text-green-600 py-1.5 border border-dashed border-gray-200 hover:border-green-300 rounded-lg transition-colors">
-                                            더보기 ({notices.length - noticeVisibleCount}개 남음)
-                                        </button>
-                                    )}
-                                    {noticeVisibleCount > 10 && (
-                                        <button onClick={() => setNoticeVisibleCount(10)}
-                                            className="mt-1 w-full text-xs text-gray-300 hover:text-gray-500 py-1 transition-colors">
-                                            접기
-                                        </button>
-                                    )}
-                                </>
-                            )}
-                        </div>
-                    </div>
+                {/* ═══════════ 기기 공통 상태 ═══════════ */}
+                <div className="flex items-center gap-2 mb-3">
+                    <span className="text-base">🌐</span>
+                    <h2 className="text-sm font-bold text-gray-700">기기 공통 상태</h2>
+                    <span className="text-[11px] text-gray-400">장비 전체 적용 · 8포트 공통</span>
+                    <div className="flex-1 border-t border-gray-200 ml-2" />
                 </div>
 
-                {/* 중앙 콘텐츠 */}
-                <div className="lg:col-span-6 flex flex-col gap-4">
-
-                    {/* 온도/습도 */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs text-gray-400 font-medium tracking-widest">TEMPERATURE</span>
-                                <span className="text-xl">🌡️</span>
-                            </div>
-                            <div className={`text-3xl sm:text-4xl font-bold transition-colors ${tempOk ? "text-green-500" : temp !== null ? "text-yellow-500" : "text-gray-300"}`}>
-                                {temp !== null && temp !== undefined ? `${temp}°C` : "-"}
-                            </div>
-                            <div className="mt-2 text-xs text-gray-400">
-                                {tempOk ? "✓ 적정 범위" : temp !== null ? "⚠ 범위 벗어남" : "데이터 없음"}
-                            </div>
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                    {/* 온도 */}
+                    <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs text-gray-400 font-medium tracking-widest">TEMPERATURE</span>
+                            <span className="text-xl">🌡️</span>
                         </div>
-                        <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs text-gray-400 font-medium tracking-widest">HUMIDITY</span>
-                                <span className="text-xl">💧</span>
-                            </div>
-                            <div className={`text-3xl sm:text-4xl font-bold transition-colors ${humidOk ? "text-green-500" : humidity !== null ? "text-yellow-500" : "text-gray-300"}`}>
-                                {humidity !== null && humidity !== undefined ? `${humidity}%` : "-"}
-                            </div>
-                            <div className="mt-2 text-xs text-gray-400">
-                                {humidOk ? "✓ 정상" : humidity !== null ? "⚠ 확인 필요" : "데이터 없음"}
-                            </div>
+                        <div className={`text-3xl sm:text-4xl font-bold transition-colors ${tempOk ? "text-green-500" : temp !== null ? "text-yellow-500" : "text-gray-300"}`}>
+                            {temp !== null && temp !== undefined ? `${temp}°C` : "-"}
+                        </div>
+                        <div className="mt-2 text-xs text-gray-400">
+                            {tempOk ? "✓ 적정 범위" : temp !== null ? "⚠ 범위 벗어남" : "데이터 없음"}
+                        </div>
+                    </div>
+                    {/* 습도 */}
+                    <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs text-gray-400 font-medium tracking-widest">HUMIDITY</span>
+                            <span className="text-xl">💧</span>
+                        </div>
+                        <div className={`text-3xl sm:text-4xl font-bold transition-colors ${humidOk ? "text-green-500" : humidity !== null ? "text-yellow-500" : "text-gray-300"}`}>
+                            {humidity !== null && humidity !== undefined ? `${humidity}%` : "-"}
+                        </div>
+                        <div className="mt-2 text-xs text-gray-400">
+                            {humidOk ? "✓ 정상" : humidity !== null ? "⚠ 확인 필요" : "데이터 없음"}
                         </div>
                     </div>
 
                     {/* 양액 시스템 */}
-                    <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm">
+                    <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm lg:col-span-2">
                         <h2 className="text-sm font-semibold text-gray-700 mb-4">📊 양액 시스템 모니터링</h2>
                         <div className="grid grid-cols-3 gap-4">
                             {/* WATER */}
@@ -1337,155 +1460,98 @@ function MonitoringPage() {
                         </div>
                     </div>
 
-                    {/* 생육 일정 */}
-                    <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm">
-                        <div className="mb-4">
+                    {/* 시스템 제어 */}
+                    <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm lg:col-span-2">
+                        <h2 className="text-sm font-semibold text-gray-700 mb-4">⚙️ 시스템 제어</h2>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* LED */}
                             <div>
-                                <h2 className="text-sm font-semibold text-gray-700">📈 생육 일정</h2>
-                                <p className="mt-0.5 text-[10px] text-gray-400">
-                                    단계 기록과 다음 예상 시점을 확인하세요.
+                                <div className="flex items-center justify-between mb-3">
+                                    <span className="text-xs font-medium text-gray-600">💡 LED 조명</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-[10px] font-medium ${!isLedAuto ? "text-gray-700" : "text-gray-300"}`}>수동</span>
+                                        <div onClick={() => handleLedModeToggle(!isLedAuto)}
+                                            className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${isLedAuto ? "bg-green-500" : "bg-gray-300"}`}>
+                                            <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow ${isLedAuto ? "left-5" : "left-0.5"}`} />
+                                        </div>
+                                        <span className={`text-[10px] font-medium ${isLedAuto ? "text-green-600" : "text-gray-300"}`}>자동</span>
+                                    </div>
+                                </div>
+                                {!isLedAuto && (
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button onClick={() => handleLedManual(true)} disabled={ledSaving}
+                                            className={`py-2 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-50 ${isLedOn ? "bg-yellow-400 border-yellow-400 text-white" : "bg-gray-50 border-gray-200 text-gray-400 hover:border-yellow-300 hover:text-yellow-500"}`}>
+                                            ☀️ ON
+                                        </button>
+                                        <button onClick={() => handleLedManual(false)} disabled={ledSaving}
+                                            className={`py-2 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-50 ${!isLedOn ? "bg-gray-400 border-gray-400 text-white" : "bg-gray-50 border-gray-200 text-gray-400 hover:border-gray-400 hover:text-gray-600"}`}>
+                                            🌙 OFF
+                                        </button>
+                                    </div>
+                                )}
+                                {isLedAuto && (
+                                    <div className="flex flex-col gap-2">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="text-xs text-gray-400">시작 시간</label>
+                                                <input type="time" value={ledStart} onChange={e => setLedStart(e.target.value)}
+                                                    className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1" />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-gray-400">종료 시간</label>
+                                                <input type="time" value={ledEnd} onChange={e => setLedEnd(e.target.value)}
+                                                    className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1" />
+                                            </div>
+                                        </div>
+                                        <button onClick={handleLedScheduleSave} disabled={ledSaving}
+                                            className="w-full bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white text-xs font-semibold py-2 rounded-lg transition-colors">
+                                            {ledSaving ? "저장 중..." : "스케줄 적용"}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                            {/* 촬영 주기 */}
+                            <div>
+                                <div className="flex items-center justify-between mb-3">
+                                    <span className="text-xs font-medium text-gray-600">📷 촬영 주기</span>
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <select value={captureInterval} onChange={e => setCaptureInterval(Number(e.target.value))}
+                                        className="w-full border border-gray-100 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-400">
+                                        <option value={1}>1시간</option>
+                                        <option value={3}>3시간</option>
+                                        <option value={6}>6시간</option>
+                                        <option value={12}>12시간</option>
+                                        <option value={24}>24시간</option>
+                                    </select>
+                                    <button onClick={handleCaptureSave} disabled={captureSaving}
+                                        className="w-full bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white text-xs font-semibold py-2 rounded-lg transition-colors">
+                                        {captureSaving ? "저장 중..." : "주기 적용"}
+                                    </button>
+                                </div>
+                                <p className="text-[11px] text-gray-400 leading-relaxed mt-2">
+                                    주기마다 타워가 360° 회전하며 전체 식물을 촬영합니다.
                                 </p>
                             </div>
                         </div>
-
-                        <div className="mb-4 flex flex-wrap items-center gap-2">
-                            <span className="mr-1 text-[10px] font-semibold text-gray-500">포트</span>
-                            <div className="flex flex-wrap gap-1.5">
-                                {PORT_OPTIONS.map(port => {
-                                    const portPlant = device.plants?.find(p => p.portIndex === port);
-                                    const isPortOn = portStatus[port] === "1";
-                                    return (
-                                        <button key={port} onClick={() => setSelectedPort(port)}
-                                            aria-label={`포트 ${port + 1}${isPortOn && portPlant ? " 사용 중" : ""}`}
-                                            className={`h-8 min-w-8 rounded-lg border px-2 text-xs font-semibold transition-colors ${
-                                                selectedPort === port
-                                                    ? "border-green-600 bg-green-600 text-white shadow-sm"
-                                                    : isPortOn && portPlant
-                                                        ? "border-green-200 bg-white text-green-700 hover:bg-green-50"
-                                                        : "border-gray-100 bg-white text-gray-300"
-                                            }`}>
-                                            {port + 1}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            <div className="ml-auto inline-flex items-center gap-1.5 text-[10px] text-gray-400 sm:text-xs">
-                                <strong className="text-gray-700">포트 {selectedPort + 1}</strong>
-                                <span>·</span>
-                                <span>{selectedPlant ? `${emoji} ${deviceSpeciesName || selectedPlant.name}` : "식물 미등록"}</span>
-                                <span className={`font-semibold ${
-                                    portStatus[selectedPort] === "1" ? "text-green-600" : "text-gray-300"
-                                }`}>
-                                    {portStatus[selectedPort] === "1" ? "● ON" : "○ OFF"}
-                                </span>
-                            </div>
-                        </div>
-
-                        <GrowthTimelineChart
-                            selectedPlant={selectedPlant}
-                            prediction={prediction}
-                            speciesName={deviceSpeciesName}
-                            stageNames={stageNames}
-                            stageDurationDays={device.stageDurationDays || []}
-                        />
-                    </div>
-                </div>
-
-                {/* 우측 제어판 */}
-                <div className="lg:col-span-3 flex flex-col gap-3">
-                    <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
-                        <h2 className="text-sm font-semibold text-gray-700 mb-4">⚙️ 시스템 제어</h2>
-
-                        {/* LED */}
-                        <div className="mb-4 pb-4 border-b border-gray-50">
-                            <div className="flex items-center justify-between mb-3">
-                                <span className="text-xs font-medium text-gray-600">💡 LED 조명</span>
-                                <div className="flex items-center gap-2">
-                                    <span className={`text-[10px] font-medium ${!isLedAuto ? "text-gray-700" : "text-gray-300"}`}>수동</span>
-                                    <div onClick={() => handleLedModeToggle(!isLedAuto)}
-                                        className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${isLedAuto ? "bg-green-500" : "bg-gray-300"}`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow ${isLedAuto ? "left-5" : "left-0.5"}`} />
-                                    </div>
-                                    <span className={`text-[10px] font-medium ${isLedAuto ? "text-green-600" : "text-gray-300"}`}>자동</span>
-                                </div>
-                            </div>
-                            {!isLedAuto && (
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button onClick={() => handleLedManual(true)} disabled={ledSaving}
-                                        className={`py-2 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-50 ${isLedOn ? "bg-yellow-400 border-yellow-400 text-white" : "bg-gray-50 border-gray-200 text-gray-400 hover:border-yellow-300 hover:text-yellow-500"}`}>
-                                        ☀️ ON
-                                    </button>
-                                    <button onClick={() => handleLedManual(false)} disabled={ledSaving}
-                                        className={`py-2 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-50 ${!isLedOn ? "bg-gray-400 border-gray-400 text-white" : "bg-gray-50 border-gray-200 text-gray-400 hover:border-gray-400 hover:text-gray-600"}`}>
-                                        🌙 OFF
-                                    </button>
-                                </div>
-                            )}
-                            {isLedAuto && (
-                                <div className="flex flex-col gap-2">
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label className="text-xs text-gray-400">시작 시간</label>
-                                            <input type="time" value={ledStart} onChange={e => setLedStart(e.target.value)}
-                                                className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1" />
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-400">종료 시간</label>
-                                            <input type="time" value={ledEnd} onChange={e => setLedEnd(e.target.value)}
-                                                className="w-full border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 mt-1" />
-                                        </div>
-                                    </div>
-                                    <button onClick={handleLedScheduleSave} disabled={ledSaving}
-                                        className="w-full bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white text-xs font-semibold py-2 rounded-lg transition-colors">
-                                        {ledSaving ? "저장 중..." : "스케줄 적용"}
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* 촬영 주기 */}
-                        <div className="mb-4 pb-4 border-b border-gray-50">
-                            <div className="flex items-center justify-between mb-3">
-                                <span className="text-xs font-medium text-gray-600">📷 촬영 주기</span>
-                            </div>
-                            <div className="flex flex-col gap-2">
-                                <select value={captureInterval} onChange={e => setCaptureInterval(Number(e.target.value))}
-                                    className="w-full border border-gray-100 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-400">
-                                    <option value={1}>1시간</option>
-                                    <option value={3}>3시간</option>
-                                    <option value={6}>6시간</option>
-                                    <option value={12}>12시간</option>
-                                    <option value={24}>24시간</option>
-                                </select>
-                                <button onClick={handleCaptureSave} disabled={captureSaving}
-                                    className="w-full bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white text-xs font-semibold py-2 rounded-lg transition-colors">
-                                    {captureSaving ? "저장 중..." : "주기 적용"}
-                                </button>
-                            </div>
-                            <p className="text-xs text-gray-400 leading-relaxed mt-2">
-                                설정된 주기마다 타워가 360° 회전하면서 전체 식물을 촬영합니다.
-                            </p>
-                        </div>
-
                         {saveMessage && (
-                            <div className={`text-xs text-center mb-2 font-medium ${saveMessage.startsWith("⚠") ? "text-yellow-500" : "text-green-600"}`}>
+                            <div className={`text-xs text-center mt-3 font-medium ${saveMessage.startsWith("⚠") ? "text-yellow-500" : "text-green-600"}`}>
                                 {saveMessage}
                             </div>
                         )}
                         <button onClick={handleResetSettings}
-                            className="w-full border border-gray-200 text-gray-500 hover:bg-gray-50 text-sm py-2.5 rounded-xl transition-colors">
+                            className="w-full mt-4 border border-gray-200 text-gray-500 hover:bg-gray-50 text-sm py-2.5 rounded-xl transition-colors">
                             설정 초기화
                         </button>
                     </div>
 
                     {/* AI 재배 조언 */}
-                    <div className="bg-green-50 rounded-2xl border border-green-100 p-4">
+                    <div className="bg-green-50 rounded-2xl border border-green-100 p-4 lg:col-span-2">
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2">
                                 <span className="text-sm">🤖</span>
                                 <h2 className="text-sm font-semibold text-green-700">AI 재배 조언</h2>
                             </div>
-                            {/* AI 재배 조언 전용 새로고침 버튼 */}
                             <button
                                 onClick={() => handleRefreshAdvice(device, selectedPlant)}
                                 disabled={adviceAiLoading}
@@ -1509,6 +1575,262 @@ function MonitoringPage() {
                         ) : (
                             <p className="text-xs text-gray-400 text-center py-4">조언을 불러올 수 없어요</p>
                         )}
+                    </div>
+
+                    {/* 최근 알림 (전체폭) */}
+                    <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm lg:col-span-4">
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm">🔔</span>
+                                <h2 className="text-sm font-semibold text-gray-700">최근 알림</h2>
+                            </div>
+                            {notices.length > 0 && (
+                                <span className="text-[10px] bg-green-100 text-green-600 font-semibold px-2 py-0.5 rounded-full">
+                                    {notices.length}
+                                </span>
+                            )}
+                        </div>
+                        {notices.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center gap-2 text-gray-300 py-8">
+                                <span className="text-2xl">🔕</span>
+                                <p className="text-xs">새로운 알림이 없어요</p>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs text-gray-500">
+                                    {notices.slice(0, noticeVisibleCount).map(notice => (
+                                        <div key={notice.id}
+                                            className={`border-l-2 pl-2 py-0.5 ${notice.isRead ? "border-gray-200" : "border-green-400"}`}>
+                                            <p className="font-medium text-gray-700">{notice.noticeType}</p>
+                                            <p className="mt-0.5 leading-relaxed">{notice.message}</p>
+                                            <p className="text-gray-300 mt-0.5">{notice.deviceSerial}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                                {noticeVisibleCount < notices.length && (
+                                    <button onClick={() => setNoticeVisibleCount(prev => prev + 10)}
+                                        className="mt-3 w-full text-xs text-gray-400 hover:text-green-600 py-1.5 border border-dashed border-gray-200 hover:border-green-300 rounded-lg transition-colors">
+                                        더보기 ({notices.length - noticeVisibleCount}개 남음)
+                                    </button>
+                                )}
+                                {noticeVisibleCount > 10 && (
+                                    <button onClick={() => setNoticeVisibleCount(10)}
+                                        className="mt-1 w-full text-xs text-gray-300 hover:text-gray-500 py-1 transition-colors">
+                                        접기
+                                    </button>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                {/* ═══════════ 포트별 상세 ═══════════ */}
+                <div className="flex items-center gap-2 mt-8 mb-3">
+                    <span className="text-base">🔌</span>
+                    <h2 className="text-sm font-bold text-gray-700">포트별 상세</h2>
+                    <span className="text-[11px] text-gray-400">선택한 포트만 표시 · 포트마다 생육단계·상태 다름</span>
+                    <div className="flex-1 border-t border-gray-200 ml-2" />
+                </div>
+
+                {/* 포트 선택기 (헬스 점) */}
+                <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm mb-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="mr-1 text-[11px] font-semibold text-gray-500">포트 선택</span>
+                        <div className="flex flex-wrap gap-1.5">
+                            {PORT_OPTIONS.map(port => {
+                                const portPlant = device.plants?.find(p => p.portIndex === port);
+                                const isPortOn = portStatus[port] === "1";
+                                // BE 성장추이 응답의 포트별 상태(정상/주의/이상)를 우선 사용 → 성장정체 포트는 주황.
+                                // 아직 안 불러왔으면 식물 기반(질병/빈포트/정상)으로 폴백. 추가 호출 없음.
+                                const trendHealth = growthTrend?.ports?.find(x => x.portIndex === port)?.health;
+                                const dot = trendHealth || portDotHealth(portPlant);
+                                return (
+                                    <button key={port} onClick={() => setSelectedPort(port)}
+                                        aria-label={`포트 ${port + 1}${isPortOn && portPlant ? " 사용 중" : ""}`}
+                                        className={`relative h-8 min-w-8 rounded-lg border px-2 text-xs font-semibold transition-colors ${
+                                            selectedPort === port
+                                                ? "border-green-600 bg-green-600 text-white shadow-sm"
+                                                : isPortOn && portPlant
+                                                    ? "border-green-200 bg-white text-green-700 hover:bg-green-50"
+                                                    : "border-gray-100 bg-white text-gray-300"
+                                        }`}>
+                                        {port + 1}
+                                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-white" style={{ background: HEALTH_COLOR[dot] }} />
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="ml-auto inline-flex items-center gap-1.5 text-[10px] text-gray-400 sm:text-xs">
+                            <strong className="text-gray-700">포트 {selectedPort + 1}</strong>
+                            <span>·</span>
+                            <span>{selectedPlant ? `${emoji} ${deviceSpeciesName || selectedPlant.name}` : "식물 미등록"}</span>
+                            <span className={`font-semibold ${portStatus[selectedPort] === "1" ? "text-green-600" : "text-gray-300"}`}>
+                                {portStatus[selectedPort] === "1" ? "● ON" : "○ OFF"}
+                            </span>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 pt-3 border-t border-gray-50 text-[10px] text-gray-400">
+                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: "#22c55e" }} />정상</span>
+                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: "#f59e0b" }} />주의(성장정체)</span>
+                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: "#ef4444" }} />이상(질병)</span>
+                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: "#d1d5db" }} />빈 포트</span>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:items-start">
+                    {/* 좌: 식물정보 + Vision AI */}
+                    <div className="lg:col-span-1 flex flex-col gap-4">
+                        {/* 식물 정보 */}
+                        <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center text-2xl">{emoji}</div>
+                                <div>
+                                    <div className="font-bold text-gray-800 text-sm">{deviceSpeciesName || "미등록"}</div>
+                                    <div className="text-xs text-gray-400">{serialNumber} · 포트 {selectedPort + 1}</div>
+                                </div>
+                            </div>
+                            {selectedPlant ? (
+                                <div className="flex flex-col gap-2 text-xs">
+                                    {[
+                                        { label: "재배 일수", value: daysSincePlanted !== null ? `${daysSincePlanted}일차` : "-" },
+                                        {
+                                            label: "생육 단계",
+                                            value: selectedPlant.stageName
+                                                || stageNames[Number(selectedPlant.stageIndex)]
+                                                || selectedPlant.plantStage
+                                                || "-",
+                                        },
+                                        { label: "품종", value: deviceSpeciesName || "-" },
+                                    ].map(({ label, value }) => (
+                                        <div key={label} className="flex justify-between items-center py-1.5 border-b border-gray-50 last:border-0">
+                                            <span className="text-gray-400">{label}</span>
+                                            <span className="font-medium text-gray-700">{value}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-xs text-gray-400 text-center py-2">이 포트에 식물이 없어요</p>
+                            )}
+                        </div>
+
+                        {/* Vision AI 분석 — 센서 기반 실시간 점수 + AI 파싱 결과 */}
+                        <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm">🔍</span>
+                                    <h2 className="text-sm font-semibold text-gray-700">포트 건강 진단</h2>
+                                </div>
+                                <button
+                                    onClick={() => handleRefreshVision(device, selectedPlant)}
+                                    disabled={visionAiLoading}
+                                    className="text-[10px] text-green-600 hover:text-green-700 font-medium disabled:text-gray-300 transition-colors"
+                                >
+                                    {visionAiLoading ? "분석 중..." : "↻ 새로고침"}
+                                </button>
+                            </div>
+
+                            {!portHealth.portDataAvailable ? (
+                                <div className="flex items-center gap-3 mb-1 p-3 bg-gray-50 rounded-xl">
+                                    <span className="text-lg">🪴</span>
+                                    <div>
+                                        <p className="text-xs font-semibold text-gray-500">진단 대기</p>
+                                        <p className="text-[10px] text-gray-400 mt-0.5">
+                                            {portHealth.reason === "no_plant"
+                                                ? "이 포트에 등록된 식물이 없어요."
+                                                : "이 포트의 사진 데이터가 아직 없어요. 촬영이 쌓이면 진단됩니다."}
+                                        </p>
+                                    </div>
+                                </div>
+                            ) : (
+                            <>
+                            <div className="flex items-center gap-3 mb-3 p-2.5 bg-gray-50 rounded-xl">
+                                <div className="relative w-12 h-12 flex-shrink-0">
+                                    <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+                                        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" strokeWidth="3" />
+                                        <circle cx="18" cy="18" r="15.9" fill="none"
+                                            stroke={portHealth.score >= 80 ? "#22c55e" : portHealth.score >= 55 ? "#f59e0b" : "#ef4444"}
+                                            strokeWidth="3"
+                                            strokeDasharray={`${portHealth.score} 100`}
+                                            strokeLinecap="round" />
+                                    </svg>
+                                    <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-700">
+                                        {portHealth.score}
+                                    </span>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-gray-700">{portHealth.grade}</p>
+                                    <p className="text-[10px] text-gray-400 mt-0.5">포트 {selectedPort + 1} 건강 점수</p>
+                                    {portHealth.issues.length > 0 && (
+                                        <p className="text-[10px] text-yellow-500 mt-0.5">
+                                            ⚠ {portHealth.issues.slice(0, 2).join(", ")}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {visionAiLoading ? (
+                                <div className="flex flex-col gap-2">
+                                    {["생육 상태", "질병 위험"].map(label => (
+                                        <div key={label} className="flex justify-between items-center py-1">
+                                            <span className="text-xs text-gray-400">{label}</span>
+                                            <span className="w-16 h-3 bg-gray-100 rounded animate-pulse" />
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-1 text-xs">
+                                    <div className="flex justify-between items-center py-1 border-b border-gray-50">
+                                        <span className="text-gray-400">생육 상태</span>
+                                        <span className={`font-medium ${
+                                            portHealth.growthStatus === "정상" ? "text-green-500" :
+                                            portHealth.growthStatus === "주의" ? "text-yellow-500" : "text-red-500"
+                                        }`}>
+                                            {portHealth.growthStatus === "정상" ? "✓ " : "⚠ "}
+                                            {portHealth.growthStatus}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-1">
+                                        <span className="text-gray-400">질병 위험</span>
+                                        <span className={`font-medium ${
+                                            portHealth.diseaseRisk === "낮음" ? "text-green-500" :
+                                            portHealth.diseaseRisk === "보통" ? "text-yellow-500" : "text-red-500"
+                                        }`}>
+                                            {portHealth.diseaseRisk === "낮음" ? "✓ " : "⚠ "}
+                                            {portHealth.diseaseRisk}
+                                        </span>
+                                    </div>
+                                    {aiAnalysis?.growth && <GrowthSummary text={aiAnalysis.growth} />}
+                                </div>
+                            )}
+                            </>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* 우: 생육 상세 (다음단계 ETA + 성장추이 + 관측 + 문제분석) */}
+                    <div className="lg:col-span-3 flex flex-col gap-4">
+                        <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm">
+                            <div className="mb-4">
+                                <h2 className="text-sm font-semibold text-gray-700">📈 생육 상세</h2>
+                                <p className="mt-0.5 text-[10px] text-gray-400">단계 기록·다음 예상 시점 · 이 포트의 성장 추이와 문제 분석.</p>
+                            </div>
+
+                            <NextStageReadout
+                                selectedPlant={selectedPlant}
+                                prediction={prediction}
+                                stageNames={stageNames}
+                                stageDurationDays={device.stageDurationDays || []}
+                            />
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                                <GrowthTrendCard trend={growthTrend} loading={growthTrendLoading} color={selectedHealthColor} />
+                                <PortObservation plant={selectedPlant} trend={growthTrend} />
+                            </div>
+
+                            <PortProblemBlock plant={selectedPlant} trend={growthTrend}
+                                serialNumber={serialNumber} speciesId={device?.speciesId ?? null}
+                                speciesName={deviceSpeciesName} daysSincePlanted={daysSincePlanted} />
+                        </div>
                     </div>
                 </div>
             </div>
