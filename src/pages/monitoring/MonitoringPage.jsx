@@ -974,7 +974,10 @@ function MonitoringPage() {
     const [isLedAuto, setIsLedAuto] = useState(saved?.isLedAuto ?? false);
     const [ledStart, setLedStart] = useState(saved?.ledStart ?? "06:00");
     const [ledEnd, setLedEnd] = useState(saved?.ledEnd ?? "22:00");
-    const [captureInterval, setCaptureInterval] = useState(saved?.captureInterval ?? 12);
+    const savedCaptureInterval = Number(saved?.captureInterval);
+    const [captureInterval, setCaptureInterval] = useState(
+        [1, 3, 6].includes(savedCaptureInterval) ? savedCaptureInterval : 6
+    );
     const [saveMessage, setSaveMessage] = useState("");
     const [ledSaving, setLedSaving] = useState(false);
     const [captureSaving, setCaptureSaving] = useState(false);
@@ -1275,7 +1278,7 @@ function MonitoringPage() {
         localStorage.removeItem(storageKey);
         setIsLedOn(true); setIsLedAuto(false);
         setLedStart("06:00"); setLedEnd("22:00");
-        setCaptureInterval(12);
+        setCaptureInterval(6);
         setSaveMessage("✓ 초기화되었습니다");
         setTimeout(() => setSaveMessage(""), 2000);
     };
@@ -1513,8 +1516,6 @@ function MonitoringPage() {
                                         <option value={1}>1시간</option>
                                         <option value={3}>3시간</option>
                                         <option value={6}>6시간</option>
-                                        <option value={12}>12시간</option>
-                                        <option value={24}>24시간</option>
                                     </select>
                                     <button onClick={handleCaptureSave} disabled={captureSaving}
                                         className="w-full bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white text-xs font-semibold py-2 rounded-lg transition-colors">
