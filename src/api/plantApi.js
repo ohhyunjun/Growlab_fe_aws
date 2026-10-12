@@ -21,3 +21,6 @@ export const createPlantApi = async (plantData) => {
 
 export const deletePlantApi = (plantId) =>
     axios.delete(`${API_BASE}/plants/${plantId}`, authHeader());
+
+export const finishPlantApi = (plantId, reason) =>
+    axios.post(`${API_BASE}/plants/${plantId}/finish`, { reason }, authHeader());

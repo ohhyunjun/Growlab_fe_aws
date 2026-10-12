@@ -25,10 +25,6 @@ export const updateLedApi = (serialNumber, payload) =>
 export const updatePhotoIntervalApi = (serialNumber, photoInterval) =>
     axios.patch(`${API_BASE}/${serialNumber}/photo_interval`, { photoInterval }, authHeader());
 
-// ✅ 기기 대표 품종 설정/변경 - PATCH /api/devices/{serialNumber}/species
-export const updateDeviceSpeciesApi = (serialNumber, speciesId) =>
-    axios.patch(`${API_BASE}/${serialNumber}/species`, { speciesId }, authHeader());
-
 // ────────────────────────────────
 // ✅ 관리자 전용 API (ROLE_ADMIN 필요)
 // ────────────────────────────────
