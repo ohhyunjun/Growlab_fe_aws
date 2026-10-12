@@ -26,6 +26,9 @@ const SPECIES_EMOJI = {
 
 const getSensorKey = (serial) => `growlab_sensor_${serial}`;
 const getNoticeKey = (serial) => `growlab_notices_${serial}`;
+const emptySensorData = () => ({
+    temperature: null, humidity: null, ph: null, tds: null, water_level_status: null,
+});
 
 // ── AI 조언 API 호출 ──────────────────────────────────────────
 const fetchAiData = async (deviceData, plantData, liveSensor) => {
@@ -943,11 +946,9 @@ function MonitoringPage() {
     const [sensorData, setSensorData] = useState(() => {
         try {
             const saved = sessionStorage.getItem(getSensorKey(serialNumber));
-            return saved ? JSON.parse(saved) : {
-                temperature: null, humidity: null, ph: null, tds: null, water_level_status: null,
-            };
+            return saved ? JSON.parse(saved) : emptySensorData();
         } catch {
-            return { temperature: null, humidity: null, ph: null, tds: null, water_level_status: null };
+            return emptySensorData();
         }
     });
 
@@ -1161,7 +1162,9 @@ function MonitoringPage() {
                 const res = await getLatestSensorApi(serialNumber);
                 if (cancelled) return;
                 if (res.status === 204 || !res.data) {
-                    setSseConnected(true);
+                    setSensorData(emptySensorData());
+                    sessionStorage.removeItem(getSensorKey(serialNumber));
+                    setSseConnected(false);
                     return;
                 }
                 const data = res.data;
@@ -1169,13 +1172,13 @@ function MonitoringPage() {
                     firstSensorMarkedRef.current = true;
                     markMonitoringPerformance(perfRunId, "sensor_first_value");
                 }
-                setSensorData(prev => {
+                setSensorData(() => {
                     const next = {
-                        temperature:        data.temperature        ?? prev.temperature,
-                        humidity:           data.humidity           ?? prev.humidity,
-                        ph:                 data.ph                 ?? prev.ph,
-                        tds:                data.tds                ?? prev.tds,
-                        water_level_status: data.water_level_status ?? prev.water_level_status,
+                        temperature:        data.temperature        ?? null,
+                        humidity:           data.humidity           ?? null,
+                        ph:                 data.ph                 ?? null,
+                        tds:                data.tds                ?? null,
+                        water_level_status: data.water_level_status ?? null,
                     };
                     sessionStorage.setItem(getSensorKey(serialNumber), JSON.stringify(next));
                     return next;
