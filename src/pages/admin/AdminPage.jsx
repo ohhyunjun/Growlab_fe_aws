@@ -602,44 +602,44 @@ function AdminPage() {
     };
 
     return (
-        <div className="max-w-4xl mx-auto flex flex-col gap-6">
+        <div className="max-w-col-8 mx-auto flex flex-col gap-6">
             {/* 헤더 */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <button onClick={() => navigate("/mypage")} className="text-gray-400 hover:text-gray-600 text-sm">← 마이페이지</button>
-                    <h1 className="text-xl font-bold text-gray-800">🛠 관리자페이지</h1>
+                    <button onClick={() => navigate("/mypage")} className="text-gray-500 hover:text-gray-600 text-body2">← 마이페이지</button>
+                    <h1 className="text-sub1 font-bold text-gray-800">🛠 관리자페이지</h1>
                 </div>
-                <span className="text-xs bg-green-100 text-green-700 font-bold px-3 py-1 rounded-full">ADMIN</span>
+                <span className="text-caption bg-brand-cream text-brand font-bold px-3 py-1 rounded-full">ADMIN</span>
             </div>
 
             {/* 요약 카드 */}
             <div className="grid grid-cols-3 gap-2 sm:gap-4">
                 <div className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 text-center">
-                    <div className="text-[11px] sm:text-xs text-gray-400 mb-1">전체 시리얼</div>
-                    <div className="text-xl sm:text-2xl font-bold text-gray-800">{devices.length}</div>
+                    <div className="text-caption sm:text-caption text-gray-500 mb-1">전체 시리얼</div>
+                    <div className="text-sub1 sm:text-h4 font-bold text-gray-800">{devices.length}</div>
                 </div>
                 <div className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 text-center">
-                    <div className="text-[11px] sm:text-xs text-gray-400 mb-1">미배정</div>
-                    <div className="text-xl sm:text-2xl font-bold text-yellow-500">{unregisteredCount}</div>
+                    <div className="text-caption sm:text-caption text-gray-500 mb-1">미배정</div>
+                    <div className="text-sub1 sm:text-h4 font-bold text-amber-700">{unregisteredCount}</div>
                 </div>
                 <div className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 text-center">
-                    <div className="text-[11px] sm:text-xs text-gray-400 mb-1">배정됨</div>
-                    <div className="text-xl sm:text-2xl font-bold text-green-600">{registeredCount}</div>
+                    <div className="text-caption sm:text-caption text-gray-500 mb-1">배정됨</div>
+                    <div className="text-sub1 sm:text-h4 font-bold text-brand">{registeredCount}</div>
                 </div>
             </div>
 
             {/* 시리얼 등록 */}
             <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
-                <h2 className="text-base font-bold text-gray-800 mb-1">기기 시리얼 번호 등록</h2>
-                <p className="text-xs text-gray-400 mb-4">
+                <h2 className="text-body1 font-bold text-gray-800 mb-1">기기 시리얼 번호 등록</h2>
+                <p className="text-caption text-gray-500 mb-4">
                     여기서 등록한 시리얼 번호만 사용자가 홈 화면에서 "+ 기기 추가"로 자신의 기기로 등록할 수 있어요.
                 </p>
 
                 {createError && (
-                    <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2 mb-3">{createError}</div>
+                    <div className="bg-red-50 text-red-600 text-body2 rounded-lg px-4 py-2 mb-3">{createError}</div>
                 )}
                 {createMessage && (
-                    <div className="bg-green-50 text-green-600 text-sm rounded-lg px-4 py-2 mb-3">{createMessage}</div>
+                    <div className="bg-brand-cream text-brand text-body2 rounded-lg px-4 py-2 mb-3">{createMessage}</div>
                 )}
 
                 <form onSubmit={handleCreate} className="flex flex-col sm:flex-row gap-2">
@@ -648,17 +648,17 @@ function AdminPage() {
                         value={serial}
                         onChange={(e) => setSerial(e.target.value)}
                         placeholder="예: GROWLAB-A001"
-                        className="flex-1 border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                        className="flex-1 border border-gray-200 rounded-lg px-4 py-3 text-body2 focus:outline-none focus:ring-2 focus:ring-brand-leaf"
                     />
                     <button
                         type="submit"
                         disabled={createLoading}
-                        className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-medium px-5 py-2.5 rounded-lg text-sm transition-colors whitespace-nowrap"
+                        className="bg-brand hover:bg-brand-deep disabled:bg-brand-olive text-white font-medium px-5 py-3 rounded-lg text-body2 transition-colors whitespace-nowrap"
                     >
                         {createLoading ? "등록 중..." : "등록"}
                     </button>
                 </form>
-                <p className="text-xs text-gray-400 mt-2">
+                <p className="text-caption text-gray-500 mt-2">
                     * 사용자가 홈에서 기기를 추가할 때 입력하는 시리얼 번호와 형식이 동일해야 합니다 (예: GROWLAB- 접두사 포함 여부 확인).
                 </p>
             </div>
@@ -666,16 +666,16 @@ function AdminPage() {
             {/* 기기 목록 */}
             <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                    <h2 className="text-base font-bold text-gray-800">전체 기기 목록</h2>
+                    <h2 className="text-body1 font-bold text-gray-800">전체 기기 목록</h2>
                     <div className="flex items-center gap-2">
                         <input
                             type="text"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             placeholder="시리얼, 소유자 검색..."
-                            className="flex-1 sm:flex-none border border-gray-200 rounded-lg px-3 py-1.5 text-xs sm:w-48 focus:outline-none focus:ring-2 focus:ring-green-400"
+                            className="flex-1 sm:flex-none border border-gray-200 rounded-lg px-3 py-2 text-caption sm:w-48 focus:outline-none focus:ring-2 focus:ring-brand-leaf"
                         />
-                        <button onClick={fetchDevices} className="text-xs text-gray-400 hover:text-green-600 px-2 py-1.5 border border-gray-200 rounded-lg whitespace-nowrap">
+                        <button onClick={fetchDevices} className="text-caption text-gray-500 hover:text-brand px-2 py-2 border border-gray-200 rounded-lg whitespace-nowrap">
                             ↻ 새로고침
                         </button>
                     </div>
@@ -686,9 +686,9 @@ function AdminPage() {
                         <button
                             key={f.key}
                             onClick={() => setFilter(f.key)}
-                            className={`text-xs px-3 py-1.5 rounded-full font-medium whitespace-nowrap transition-colors ${
+                            className={`text-caption px-3 py-2 rounded-full font-medium whitespace-nowrap transition-colors ${
                                 filter === f.key
-                                    ? "bg-green-600 text-white"
+                                    ? "bg-brand text-white"
                                     : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                             }`}
                         >{f.label}</button>
@@ -696,20 +696,20 @@ function AdminPage() {
                 </div>
 
                 {listError && (
-                    <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2 mb-3">{listError}</div>
+                    <div className="bg-red-50 text-red-600 text-body2 rounded-lg px-4 py-2 mb-3">{listError}</div>
                 )}
 
                 {loading ? (
-                    <div className="text-center py-10 text-gray-400 text-sm">불러오는 중...</div>
+                    <div className="text-center py-10 text-gray-500 text-body2">불러오는 중...</div>
                 ) : filtered.length === 0 ? (
-                    <div className="text-center py-10 text-gray-300 text-sm">
+                    <div className="text-center py-10 text-gray-500 text-body2">
                         {devices.length === 0 ? "아직 등록된 시리얼이 없어요" : "검색 결과가 없어요"}
                     </div>
                 ) : (
                     <div className={`overflow-x-auto ${isScrollable ? "max-h-[420px] overflow-y-auto" : ""}`}>
-                        <table className="w-full text-sm min-w-[560px]">
+                        <table className="w-full text-body2 min-w-[560px]">
                             <thead className={isScrollable ? "sticky top-0 bg-white z-10" : ""}>
-                                <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+                                <tr className="text-left text-caption text-gray-500 border-b border-gray-100">
                                     <th className="py-2 pr-2 font-medium">시리얼 번호</th>
                                     <th className="py-2 pr-2 font-medium">상태</th>
                                     <th className="py-2 pr-2 font-medium">소유자</th>
@@ -722,18 +722,18 @@ function AdminPage() {
                                     <tr key={d.serialNumber} className="hover:bg-gray-50/50">
                                         <td className="py-3 pr-2 font-medium text-gray-700">{d.serialNumber}</td>
                                         <td className="py-3 pr-2">
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                                d.registered ? "bg-green-100 text-green-600" : "bg-yellow-100 text-yellow-600"
+                                            <span className={`text-caption font-bold px-2 py-1 rounded-full ${
+                                                d.registered ? "bg-brand-cream text-brand" : "bg-amber-50 text-amber-700"
                                             }`}>
                                                 {d.registered ? "배정됨" : "미배정"}
                                             </span>
                                         </td>
                                         <td className="py-3 pr-2 text-gray-500">{d.ownerUsername || "-"}</td>
-                                        <td className="py-3 pr-2 text-gray-400 text-xs">{d.createdAt?.slice(0, 10) || "-"}</td>
+                                        <td className="py-3 pr-2 text-gray-500 text-caption">{d.createdAt?.slice(0, 10) || "-"}</td>
                                         <td className="py-3 text-right">
                                             <button
                                                 onClick={() => handleDelete(d.serialNumber, d.registered)}
-                                                className="text-xs text-red-400 hover:text-red-600 font-medium"
+                                                className="text-caption text-red-600 hover:text-red-600 font-medium"
                                             >삭제</button>
                                         </td>
                                     </tr>
@@ -744,7 +744,7 @@ function AdminPage() {
                 )}
 
                 {filtered.length > 0 && (
-                    <p className="text-xs text-gray-300 mt-3 text-right">
+                    <p className="text-caption text-gray-500 mt-3 text-right">
                         총 {filtered.length}개 {isScrollable && "· 스크롤하여 더 보기"}
                     </p>
                 )}
@@ -755,57 +755,57 @@ function AdminPage() {
             ──────────────────────────────── */}
             <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
                 <div className="flex items-center justify-between mb-1">
-                    <h2 className="text-base font-bold text-gray-800">
+                    <h2 className="text-body1 font-bold text-gray-800">
                         🌱 {editingSpeciesId ? "품종 수정" : "품종 등록"}
                     </h2>
                     {editingSpeciesId && (
-                        <span className="text-[10px] bg-blue-100 text-blue-600 font-bold px-2 py-0.5 rounded-full">
+                        <span className="text-caption bg-brand-cream text-brand font-bold px-2 py-1 rounded-full">
                             수정 중
                         </span>
                     )}
                 </div>
-                <p className="text-xs text-gray-400 mb-4">
+                <p className="text-caption text-gray-500 mb-4">
                     {editingSpeciesId
                         ? "아래 내용을 수정하고 '수정 완료' 버튼을 눌러주세요."
-                        : "여기서 등록한 품종만 사용자가 기기에 대표 품종으로 선택할 수 있어요."}
+                        : "여기서 등록한 품종만 사용자가 각 포트에 심을 품종으로 선택할 수 있어요."}
                 </p>
 
                 {speciesCreateError && (
-                    <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2 mb-3">{speciesCreateError}</div>
+                    <div className="bg-red-50 text-red-600 text-body2 rounded-lg px-4 py-2 mb-3">{speciesCreateError}</div>
                 )}
                 {speciesCreateMessage && (
-                    <div className="bg-green-50 text-green-600 text-sm rounded-lg px-4 py-2 mb-3">{speciesCreateMessage}</div>
+                    <div className="bg-brand-cream text-brand text-body2 rounded-lg px-4 py-2 mb-3">{speciesCreateMessage}</div>
                 )}
 
                 <form onSubmit={handleSubmitSpecies} className="flex flex-col gap-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">품종 이름</label>
+                            <label className="block text-caption font-medium text-gray-500 mb-1">품종 이름</label>
                             <input
                                 type="text"
                                 value={speciesForm.name}
                                 onChange={(e) => handleSpeciesFormChange("name", e.target.value)}
                                 placeholder="예: 방울토마토"
-                                className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                                className="w-full border border-gray-200 rounded-lg px-4 py-3 text-body2 focus:outline-none focus:ring-2 focus:ring-brand-leaf"
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">성숙 기간 (일)</label>
+                            <label className="block text-caption font-medium text-gray-500 mb-1">성숙 기간 (일)</label>
                             <input
                                 type="number"
                                 min={1}
                                 value={speciesForm.daysToMature}
                                 onChange={(e) => handleSpeciesFormChange("daysToMature", e.target.value)}
                                 placeholder="예: 90"
-                                className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                                className="w-full border border-gray-200 rounded-lg px-4 py-3 text-body2 focus:outline-none focus:ring-2 focus:ring-brand-leaf"
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">카테고리</label>
+                            <label className="block text-caption font-medium text-gray-500 mb-1">카테고리</label>
                             <select
                                 value={speciesForm.category}
                                 onChange={(e) => handleSpeciesFormChange("category", e.target.value)}
-                                className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 text-gray-700"
+                                className="w-full border border-gray-200 rounded-lg px-4 py-3 text-body2 focus:outline-none focus:ring-2 focus:ring-brand-leaf text-gray-700"
                             >
                                 {CATEGORY_OPTIONS.map(o => (
                                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -813,11 +813,11 @@ function AdminPage() {
                             </select>
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">난이도</label>
+                            <label className="block text-caption font-medium text-gray-500 mb-1">난이도</label>
                             <select
                                 value={speciesForm.difficulty}
                                 onChange={(e) => handleSpeciesFormChange("difficulty", e.target.value)}
-                                className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 text-gray-700"
+                                className="w-full border border-gray-200 rounded-lg px-4 py-3 text-body2 focus:outline-none focus:ring-2 focus:ring-brand-leaf text-gray-700"
                             >
                                 {DIFFICULTY_OPTIONS.map(o => (
                                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -829,28 +829,28 @@ function AdminPage() {
                     {/* ✅ 생육 단계명 + 시작일 (품종마다 개수가 다를 수 있음) */}
                     <div className="border-t border-gray-100 pt-3 mt-1">
                         <div className="flex items-center justify-between mb-2">
-                            <p className="text-xs font-semibold text-gray-600">
-                                🌾 생육 단계 <span className="text-gray-400 font-normal">(순서대로, 개수 자유)</span>
+                            <p className="text-caption font-bold text-gray-600">
+                                🌾 생육 단계 <span className="text-gray-500 font-normal">(순서대로, 개수 자유)</span>
                             </p>
                             <button
                                 type="button"
                                 onClick={handleAddStage}
-                                className="text-xs text-green-600 hover:text-green-700 font-medium"
+                                className="text-caption text-brand hover:text-brand-deep font-medium"
                             >+ 단계 추가</button>
                         </div>
-                        <p className="text-[11px] text-gray-400 mb-2">
+                        <p className="text-caption text-gray-500 mb-2">
                             "며칠째부터"는 재배 시작일 기준 경과일이에요. 이 날짜가 지나면 카메라 인식 여부와 상관없이 자동으로 다음 단계로 넘어가요.
                         </p>
                         <div className="flex flex-col gap-2">
                             {speciesForm.stageNames.map((stage, i) => (
                                 <div key={i} className="flex items-center gap-2">
-                                    <span className="text-xs text-gray-400 w-5 text-center">{i + 1}</span>
+                                    <span className="text-caption text-gray-500 w-5 text-center">{i + 1}</span>
                                     <input
                                         type="text"
                                         value={stage}
                                         onChange={(e) => handleStageNameChange(i, e.target.value)}
                                         placeholder={`예: ${i === 0 ? "씨앗" : i === speciesForm.stageNames.length - 1 ? "수확" : "중간 단계"}`}
-                                        className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-400"
+                                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-caption focus:outline-none focus:ring-2 focus:ring-brand-leaf"
                                     />
                                     <div className="flex items-center gap-1 flex-shrink-0">
                                         <input
@@ -859,15 +859,15 @@ function AdminPage() {
                                             value={speciesForm.stageDurationDays[i] ?? ""}
                                             onChange={(e) => handleStageDurationChange(i, e.target.value)}
                                             placeholder="0"
-                                            className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-green-400"
+                                            className="w-16 border border-gray-200 rounded-lg px-2 py-2 text-caption text-right focus:outline-none focus:ring-2 focus:ring-brand-leaf"
                                         />
-                                        <span className="text-[11px] text-gray-400 whitespace-nowrap">일째~</span>
+                                        <span className="text-caption text-gray-500 whitespace-nowrap">일째~</span>
                                     </div>
                                     <button
                                         type="button"
                                         onClick={() => handleRemoveStage(i)}
                                         disabled={speciesForm.stageNames.length <= 1}
-                                        className="text-xs text-red-300 hover:text-red-500 disabled:opacity-30 disabled:cursor-not-allowed px-1"
+                                        className="text-caption text-red-600 hover:text-red-600 disabled:opacity-30 disabled:cursor-not-allowed px-1"
                                     >✕</button>
                                 </div>
                             ))}
@@ -876,82 +876,82 @@ function AdminPage() {
 
                     {/* ✅ 재배 기준 (AI 조언에 직접 대입되는 수치들) */}
                     <div className="border-t border-gray-100 pt-3 mt-1">
-                        <p className="text-xs font-semibold text-gray-600 mb-2">
-                            🌡 재배 기준 <span className="text-gray-400 font-normal">(선택 입력, AI 조언에 직접 반영돼요)</span>
+                        <p className="text-caption font-bold text-gray-600 mb-2">
+                            🌡 재배 기준 <span className="text-gray-500 font-normal">(선택 입력, AI 조언에 직접 반영돼요)</span>
                         </p>
                         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                             <div className="flex flex-col gap-1">
-                                <label className="text-[11px] text-gray-400">온도 (°C)</label>
+                                <label className="text-caption text-gray-500">온도 (°C)</label>
                                 <div className="flex items-center gap-1">
                                     <input type="number" step="0.1" value={speciesForm.minTemperature}
                                         onChange={(e) => handleSpeciesFormChange("minTemperature", e.target.value)}
-                                        placeholder="최소" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-400" />
-                                    <span className="text-gray-300 text-xs">~</span>
+                                        placeholder="최소" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-caption focus:outline-none focus:ring-2 focus:ring-brand-leaf" />
+                                    <span className="text-gray-500 text-caption">~</span>
                                     <input type="number" step="0.1" value={speciesForm.maxTemperature}
                                         onChange={(e) => handleSpeciesFormChange("maxTemperature", e.target.value)}
-                                        placeholder="최대" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-400" />
+                                        placeholder="최대" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-caption focus:outline-none focus:ring-2 focus:ring-brand-leaf" />
                                 </div>
                             </div>
                             <div className="flex flex-col gap-1">
-                                <label className="text-[11px] text-gray-400">습도 (%)</label>
+                                <label className="text-caption text-gray-500">습도 (%)</label>
                                 <div className="flex items-center gap-1">
                                     <input type="number" step="0.1" value={speciesForm.minHumidity}
                                         onChange={(e) => handleSpeciesFormChange("minHumidity", e.target.value)}
-                                        placeholder="최소" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-400" />
-                                    <span className="text-gray-300 text-xs">~</span>
+                                        placeholder="최소" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-caption focus:outline-none focus:ring-2 focus:ring-brand-leaf" />
+                                    <span className="text-gray-500 text-caption">~</span>
                                     <input type="number" step="0.1" value={speciesForm.maxHumidity}
                                         onChange={(e) => handleSpeciesFormChange("maxHumidity", e.target.value)}
-                                        placeholder="최대" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-400" />
+                                        placeholder="최대" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-caption focus:outline-none focus:ring-2 focus:ring-brand-leaf" />
                                 </div>
                             </div>
                             <div className="flex flex-col gap-1">
-                                <label className="text-[11px] text-gray-400">pH</label>
+                                <label className="text-caption text-gray-500">pH</label>
                                 <div className="flex items-center gap-1">
                                     <input type="number" step="0.1" value={speciesForm.minPh}
                                         onChange={(e) => handleSpeciesFormChange("minPh", e.target.value)}
-                                        placeholder="최소" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-400" />
-                                    <span className="text-gray-300 text-xs">~</span>
+                                        placeholder="최소" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-caption focus:outline-none focus:ring-2 focus:ring-brand-leaf" />
+                                    <span className="text-gray-500 text-caption">~</span>
                                     <input type="number" step="0.1" value={speciesForm.maxPh}
                                         onChange={(e) => handleSpeciesFormChange("maxPh", e.target.value)}
-                                        placeholder="최대" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-400" />
+                                        placeholder="최대" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-caption focus:outline-none focus:ring-2 focus:ring-brand-leaf" />
                                 </div>
                             </div>
                             <div className="flex flex-col gap-1">
-                                <label className="text-[11px] text-gray-400">TDS (ppm)</label>
+                                <label className="text-caption text-gray-500">TDS (ppm)</label>
                                 <div className="flex items-center gap-1">
                                     <input type="number" step="1" value={speciesForm.minTds}
                                         onChange={(e) => handleSpeciesFormChange("minTds", e.target.value)}
-                                        placeholder="최소" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-400" />
-                                    <span className="text-gray-300 text-xs">~</span>
+                                        placeholder="최소" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-caption focus:outline-none focus:ring-2 focus:ring-brand-leaf" />
+                                    <span className="text-gray-500 text-caption">~</span>
                                     <input type="number" step="1" value={speciesForm.maxTds}
                                         onChange={(e) => handleSpeciesFormChange("maxTds", e.target.value)}
-                                        placeholder="최대" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-400" />
+                                        placeholder="최대" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-caption focus:outline-none focus:ring-2 focus:ring-brand-leaf" />
                                 </div>
                             </div>
                             <div className="flex flex-col gap-1">
-                                <label className="text-[11px] text-gray-400">조명시간 (h)</label>
+                                <label className="text-caption text-gray-500">조명시간 (h)</label>
                                 <div className="flex items-center gap-1">
                                     <input type="number" step="0.5" value={speciesForm.minLightHours}
                                         onChange={(e) => handleSpeciesFormChange("minLightHours", e.target.value)}
-                                        placeholder="최소" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-400" />
-                                    <span className="text-gray-300 text-xs">~</span>
+                                        placeholder="최소" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-caption focus:outline-none focus:ring-2 focus:ring-brand-leaf" />
+                                    <span className="text-gray-500 text-caption">~</span>
                                     <input type="number" step="0.5" value={speciesForm.maxLightHours}
                                         onChange={(e) => handleSpeciesFormChange("maxLightHours", e.target.value)}
-                                        placeholder="최대" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-400" />
+                                        placeholder="최대" className="w-full border border-gray-200 rounded-lg px-2 py-2 text-caption focus:outline-none focus:ring-2 focus:ring-brand-leaf" />
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">생육 특이사항 (선택)</label>
+                        <label className="block text-caption font-medium text-gray-500 mb-1">생육 특이사항 (선택)</label>
                         <textarea
                             value={speciesForm.aiPromptGuideline}
                             onChange={(e) => handleSpeciesFormChange("aiPromptGuideline", e.target.value)}
                             placeholder="예: 고온 환경에서 웃자람 및 생육 스트레스를 받을 수 있음"
                             rows={3}
                             maxLength={500}
-                            className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
+                            className="w-full border border-gray-200 rounded-lg px-4 py-3 text-body2 focus:outline-none focus:ring-2 focus:ring-brand-leaf resize-none"
                         />
                     </div>
 
@@ -960,7 +960,7 @@ function AdminPage() {
                             <button
                                 type="button"
                                 onClick={resetSpeciesForm}
-                                className="px-5 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-500 hover:bg-gray-50 transition-colors"
+                                className="px-5 py-3 border border-gray-200 rounded-lg text-body2 text-gray-500 hover:bg-gray-50 transition-colors"
                             >
                                 취소
                             </button>
@@ -968,10 +968,10 @@ function AdminPage() {
                         <button
                             type="submit"
                             disabled={speciesCreateLoading}
-                            className={`text-white font-medium px-6 py-2.5 rounded-lg text-sm transition-colors ${
+                            className={`text-white font-medium px-6 py-3 rounded-lg text-body2 transition-colors ${
                                 editingSpeciesId
-                                    ? "bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300"
-                                    : "bg-green-600 hover:bg-green-700 disabled:bg-green-300"
+                                    ? "bg-brand-olive hover:bg-brand-olive disabled:bg-brand-olive/30"
+                                    : "bg-brand hover:bg-brand-deep disabled:bg-brand-olive"
                             }`}
                         >
                             {speciesCreateLoading
@@ -985,36 +985,36 @@ function AdminPage() {
             {/* 품종 목록 */}
             <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                    <h2 className="text-base font-bold text-gray-800">전체 품종 목록</h2>
+                    <h2 className="text-body1 font-bold text-gray-800">전체 품종 목록</h2>
                     <div className="flex items-center gap-2">
                         <input
                             type="text"
                             value={speciesSearch}
                             onChange={(e) => setSpeciesSearch(e.target.value)}
                             placeholder="품종 이름 검색..."
-                            className="flex-1 sm:flex-none border border-gray-200 rounded-lg px-3 py-1.5 text-xs sm:w-48 focus:outline-none focus:ring-2 focus:ring-green-400"
+                            className="flex-1 sm:flex-none border border-gray-200 rounded-lg px-3 py-2 text-caption sm:w-48 focus:outline-none focus:ring-2 focus:ring-brand-leaf"
                         />
-                        <button onClick={fetchSpecies} className="text-xs text-gray-400 hover:text-green-600 px-2 py-1.5 border border-gray-200 rounded-lg whitespace-nowrap">
+                        <button onClick={fetchSpecies} className="text-caption text-gray-500 hover:text-brand px-2 py-2 border border-gray-200 rounded-lg whitespace-nowrap">
                             ↻ 새로고침
                         </button>
                     </div>
                 </div>
 
                 {speciesListError && (
-                    <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2 mb-3">{speciesListError}</div>
+                    <div className="bg-red-50 text-red-600 text-body2 rounded-lg px-4 py-2 mb-3">{speciesListError}</div>
                 )}
 
                 {speciesLoading ? (
-                    <div className="text-center py-10 text-gray-400 text-sm">불러오는 중...</div>
+                    <div className="text-center py-10 text-gray-500 text-body2">불러오는 중...</div>
                 ) : filteredSpecies.length === 0 ? (
-                    <div className="text-center py-10 text-gray-300 text-sm">
+                    <div className="text-center py-10 text-gray-500 text-body2">
                         {speciesList.length === 0 ? "아직 등록된 품종이 없어요" : "검색 결과가 없어요"}
                     </div>
                 ) : (
                     <div className={`overflow-x-auto ${isSpeciesScrollable ? "max-h-[420px] overflow-y-auto" : ""}`}>
-                        <table className="w-full text-sm min-w-[680px]">
+                        <table className="w-full text-body2 min-w-[680px]">
                             <thead className={isSpeciesScrollable ? "sticky top-0 bg-white z-10" : ""}>
-                                <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+                                <tr className="text-left text-caption text-gray-500 border-b border-gray-100">
                                     <th className="py-2 pr-2 font-medium">품종 이름</th>
                                     <th className="py-2 pr-2 font-medium">카테고리</th>
                                     <th className="py-2 pr-2 font-medium">난이도</th>
@@ -1027,22 +1027,22 @@ function AdminPage() {
                                 {filteredSpecies.map(s => (
                                     <tr
                                         key={s.id}
-                                        className={`hover:bg-gray-50/50 ${editingSpeciesId === s.id ? "bg-blue-50/50" : ""}`}
+                                        className={`hover:bg-gray-50/50 ${editingSpeciesId === s.id ? "bg-brand-cream/50" : ""}`}
                                     >
                                         <td className="py-3 pr-2 font-medium text-gray-700">{s.name}</td>
                                         <td className="py-3 pr-2 text-gray-500">{CATEGORY_LABEL[s.category] || s.category}</td>
                                         <td className="py-3 pr-2">
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                                s.difficulty === "EASY" ? "bg-green-100 text-green-700" :
+                                            <span className={`text-caption font-bold px-2 py-1 rounded-full ${
+                                                s.difficulty === "EASY" ? "bg-brand-cream text-brand" :
                                                 s.difficulty === "HARD" ? "bg-red-100 text-red-600" :
-                                                "bg-yellow-100 text-yellow-700"
+                                                "bg-amber-50 text-amber-700"
                                             }`}>
                                                 {DIFFICULTY_LABEL[s.difficulty] || s.difficulty}
                                             </span>
                                         </td>
-                                        <td className="py-3 pr-2 text-gray-400 text-xs">{s.daysToMature}일</td>
+                                        <td className="py-3 pr-2 text-gray-500 text-caption">{s.daysToMature}일</td>
                                         <td
-                                            className="py-3 pr-2 text-gray-400 text-xs max-w-[240px] truncate"
+                                            className="py-3 pr-2 text-gray-500 text-caption max-w-[240px] truncate"
                                             title={s.stageNames?.map((name, i) => `${name}(${s.stageDurationDays?.[i] ?? "?"}일)`).join(" → ")}
                                         >
                                             {s.stageCount ?? s.stageNames?.length ?? "-"}단계
@@ -1054,11 +1054,11 @@ function AdminPage() {
                                             <div className="flex justify-end gap-3">
                                                 <button
                                                     onClick={() => handleStartEditSpecies(s)}
-                                                    className="text-xs text-blue-500 hover:text-blue-700 font-medium"
+                                                    className="text-caption text-brand hover:text-brand-deep font-medium"
                                                 >수정</button>
                                                 <button
                                                     onClick={() => handleDeleteSpecies(s.id, s.name)}
-                                                    className="text-xs text-red-400 hover:text-red-600 font-medium"
+                                                    className="text-caption text-red-600 hover:text-red-600 font-medium"
                                                 >삭제</button>
                                             </div>
                                         </td>
@@ -1070,7 +1070,7 @@ function AdminPage() {
                 )}
 
                 {filteredSpecies.length > 0 && (
-                    <p className="text-xs text-gray-300 mt-3 text-right">
+                    <p className="text-caption text-gray-500 mt-3 text-right">
                         총 {filteredSpecies.length}개 {isSpeciesScrollable && "· 스크롤하여 더 보기"}
                     </p>
                 )}
@@ -1079,12 +1079,12 @@ function AdminPage() {
             {/* 회원 관리 */}
             <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
-                    <h2 className="text-base font-bold text-gray-800">👤 회원 관리</h2>
-                    <span className="text-xs text-gray-400">
+                    <h2 className="text-body1 font-bold text-gray-800">👤 회원 관리</h2>
+                    <span className="text-caption text-gray-500">
                         전체 {users.length}명 · 관리자 {adminCount}명
                     </span>
                 </div>
-                <p className="text-xs text-gray-400 mb-4">
+                <p className="text-caption text-gray-500 mb-4">
                     본인 계정은 안전을 위해 여기서 탈퇴/권한 변경이 불가능해요.
                 </p>
 
@@ -1094,9 +1094,9 @@ function AdminPage() {
                             <button
                                 key={f.key}
                                 onClick={() => setRoleFilter(f.key)}
-                                className={`text-xs px-3 py-1.5 rounded-full font-medium whitespace-nowrap transition-colors ${
+                                className={`text-caption px-3 py-2 rounded-full font-medium whitespace-nowrap transition-colors ${
                                     roleFilter === f.key
-                                        ? "bg-green-600 text-white"
+                                        ? "bg-brand text-white"
                                         : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                                 }`}
                             >{f.label}</button>
@@ -1108,29 +1108,29 @@ function AdminPage() {
                             value={userSearch}
                             onChange={(e) => setUserSearch(e.target.value)}
                             placeholder="아이디, 이메일 검색..."
-                            className="flex-1 sm:flex-none border border-gray-200 rounded-lg px-3 py-1.5 text-xs sm:w-48 focus:outline-none focus:ring-2 focus:ring-green-400"
+                            className="flex-1 sm:flex-none border border-gray-200 rounded-lg px-3 py-2 text-caption sm:w-48 focus:outline-none focus:ring-2 focus:ring-brand-leaf"
                         />
-                        <button onClick={fetchUsers} className="text-xs text-gray-400 hover:text-green-600 px-2 py-1.5 border border-gray-200 rounded-lg whitespace-nowrap">
+                        <button onClick={fetchUsers} className="text-caption text-gray-500 hover:text-brand px-2 py-2 border border-gray-200 rounded-lg whitespace-nowrap">
                             ↻ 새로고침
                         </button>
                     </div>
                 </div>
 
                 {usersListError && (
-                    <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2 mb-3">{usersListError}</div>
+                    <div className="bg-red-50 text-red-600 text-body2 rounded-lg px-4 py-2 mb-3">{usersListError}</div>
                 )}
 
                 {usersLoading ? (
-                    <div className="text-center py-10 text-gray-400 text-sm">불러오는 중...</div>
+                    <div className="text-center py-10 text-gray-500 text-body2">불러오는 중...</div>
                 ) : filteredUsers.length === 0 ? (
-                    <div className="text-center py-10 text-gray-300 text-sm">
+                    <div className="text-center py-10 text-gray-500 text-body2">
                         {users.length === 0 ? "회원이 없어요" : "검색 결과가 없어요"}
                     </div>
                 ) : (
                     <div className={`overflow-x-auto ${isUsersScrollable ? "max-h-[420px] overflow-y-auto" : ""}`}>
-                        <table className="w-full text-sm min-w-[600px]">
+                        <table className="w-full text-body2 min-w-[600px]">
                             <thead className={isUsersScrollable ? "sticky top-0 bg-white z-10" : ""}>
-                                <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+                                <tr className="text-left text-caption text-gray-500 border-b border-gray-100">
                                     <th className="py-2 pr-2 font-medium">아이디</th>
                                     <th className="py-2 pr-2 font-medium">이메일</th>
                                     <th className="py-2 pr-2 font-medium">권한</th>
@@ -1142,28 +1142,28 @@ function AdminPage() {
                                 {filteredUsers.map(u => {
                                     const isMe = u.username === myUsername;
                                     return (
-                                        <tr key={u.id} className={`hover:bg-gray-50/50 ${isMe ? "bg-yellow-50/40" : ""}`}>
+                                        <tr key={u.id} className={`hover:bg-gray-50/50 ${isMe ? "bg-amber-50/40" : ""}`}>
                                             <td className="py-3 pr-2 font-medium text-gray-700">
-                                                {u.username} {isMe && <span className="text-[10px] text-yellow-600 font-bold ml-1">(나)</span>}
+                                                {u.username} {isMe && <span className="text-caption text-amber-700 font-bold ml-1">(나)</span>}
                                             </td>
                                             <td className="py-3 pr-2 text-gray-500">{u.email}</td>
                                             <td className="py-3 pr-2">
-                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                                    u.role === "ROLE_ADMIN" ? "bg-purple-100 text-purple-600" : "bg-gray-100 text-gray-500"
+                                                <span className={`text-caption font-bold px-2 py-1 rounded-full ${
+                                                    u.role === "ROLE_ADMIN" ? "bg-brand-cream text-brand" : "bg-gray-100 text-gray-500"
                                                 }`}>
                                                     {u.role === "ROLE_ADMIN" ? "관리자" : "일반회원"}
                                                 </span>
                                             </td>
-                                            <td className="py-3 pr-2 text-gray-400 text-xs">{u.createdAt?.slice(0, 10) || "-"}</td>
+                                            <td className="py-3 pr-2 text-gray-500 text-caption">{u.createdAt?.slice(0, 10) || "-"}</td>
                                             <td className="py-3 text-right">
                                                 <div className="flex justify-end gap-3">
                                                     <button
                                                         onClick={() => handleToggleRole(u)}
                                                         disabled={isMe || roleUpdatingId === u.id}
-                                                        className={`text-xs font-medium ${
+                                                        className={`text-caption font-medium ${
                                                             isMe
-                                                                ? "text-gray-300 cursor-not-allowed"
-                                                                : "text-blue-500 hover:text-blue-700"
+                                                                ? "text-gray-500 cursor-not-allowed"
+                                                                : "text-brand hover:text-brand-deep"
                                                         }`}
                                                     >
                                                         {roleUpdatingId === u.id
@@ -1173,10 +1173,10 @@ function AdminPage() {
                                                     <button
                                                         onClick={() => handleDeleteUser(u)}
                                                         disabled={isMe}
-                                                        className={`text-xs font-medium ${
+                                                        className={`text-caption font-medium ${
                                                             isMe
-                                                                ? "text-gray-300 cursor-not-allowed"
-                                                                : "text-red-400 hover:text-red-600"
+                                                                ? "text-gray-500 cursor-not-allowed"
+                                                                : "text-red-600 hover:text-red-600"
                                                         }`}
                                                     >강퇴</button>
                                                 </div>
@@ -1190,7 +1190,7 @@ function AdminPage() {
                 )}
 
                 {filteredUsers.length > 0 && (
-                    <p className="text-xs text-gray-300 mt-3 text-right">
+                    <p className="text-caption text-gray-500 mt-3 text-right">
                         총 {filteredUsers.length}명 {isUsersScrollable && "· 스크롤하여 더 보기"}
                     </p>
                 )}
@@ -1201,10 +1201,10 @@ function AdminPage() {
             ──────────────────────────────── */}
             <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
-                    <h2 className="text-base font-bold text-gray-800">📝 게시글 · 댓글 관리</h2>
-                    <span className="text-xs text-gray-400">불러온 게시글 {articles.length}개</span>
+                    <h2 className="text-body1 font-bold text-gray-800">📝 게시글 · 댓글 관리</h2>
+                    <span className="text-caption text-gray-500">불러온 게시글 {articles.length}개</span>
                 </div>
-                <p className="text-xs text-gray-400 mb-4">
+                <p className="text-caption text-gray-500 mb-4">
                     게시글 행을 클릭하면 해당 게시글의 댓글을 펼쳐볼 수 있어요. 삭제 버튼은 별도로 동작합니다.
                 </p>
 
@@ -1214,31 +1214,31 @@ function AdminPage() {
                         value={articleSearch}
                         onChange={(e) => setArticleSearch(e.target.value)}
                         placeholder="제목, 작성자 검색..."
-                        className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-400"
+                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-caption focus:outline-none focus:ring-2 focus:ring-brand-leaf"
                     />
                     <button
                         onClick={() => fetchArticles(0)}
-                        className="text-xs text-gray-400 hover:text-green-600 px-2 py-1.5 border border-gray-200 rounded-lg whitespace-nowrap"
+                        className="text-caption text-gray-500 hover:text-brand px-2 py-2 border border-gray-200 rounded-lg whitespace-nowrap"
                     >
                         ↻ 새로고침
                     </button>
                 </div>
 
                 {articlesListError && (
-                    <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2 mb-3">{articlesListError}</div>
+                    <div className="bg-red-50 text-red-600 text-body2 rounded-lg px-4 py-2 mb-3">{articlesListError}</div>
                 )}
 
                 {articlesLoading ? (
-                    <div className="text-center py-10 text-gray-400 text-sm">불러오는 중...</div>
+                    <div className="text-center py-10 text-gray-500 text-body2">불러오는 중...</div>
                 ) : filteredArticles.length === 0 ? (
-                    <div className="text-center py-10 text-gray-300 text-sm">
+                    <div className="text-center py-10 text-gray-500 text-body2">
                         {articles.length === 0 ? "게시글이 없어요" : "검색 결과가 없어요"}
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-sm min-w-[600px]">
+                        <table className="w-full text-body2 min-w-[600px]">
                             <thead>
-                                <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+                                <tr className="text-left text-caption text-gray-500 border-b border-gray-100">
                                     <th className="py-2 pr-2 font-medium w-4"></th>
                                     <th className="py-2 pr-2 font-medium">제목</th>
                                     <th className="py-2 pr-2 font-medium">카테고리</th>
@@ -1256,19 +1256,19 @@ function AdminPage() {
                                             <tr
                                                 key={a.id}
                                                 onClick={() => handleToggleArticle(a)}
-                                                className={`cursor-pointer hover:bg-gray-50/50 ${isExpanded ? "bg-green-50/40" : ""}`}
+                                                className={`cursor-pointer hover:bg-gray-50/50 ${isExpanded ? "bg-brand-cream/40" : ""}`}
                                             >
-                                                <td className="py-3 pr-2 text-gray-300">
+                                                <td className="py-3 pr-2 text-gray-500">
                                                     <span className={`inline-block transition-transform ${isExpanded ? "rotate-90" : ""}`}>▶</span>
                                                 </td>
                                                 <td className="py-3 pr-2 font-medium text-gray-700 max-w-[200px] truncate">{a.title}</td>
                                                 <td className="py-3 pr-2 text-gray-500">{a.category}</td>
                                                 <td className="py-3 pr-2 text-gray-500">{a.authorUsername}</td>
-                                                <td className="py-3 pr-2 text-gray-400 text-xs">{a.createdAt?.slice(0, 10) || "-"}</td>
+                                                <td className="py-3 pr-2 text-gray-500 text-caption">{a.createdAt?.slice(0, 10) || "-"}</td>
                                                 <td className="py-3 text-right">
                                                     <button
                                                         onClick={(e) => handleDeleteArticle(e, a)}
-                                                        className="text-xs text-red-400 hover:text-red-600 font-medium"
+                                                        className="text-caption text-red-600 hover:text-red-600 font-medium"
                                                     >삭제</button>
                                                 </td>
                                             </tr>
@@ -1276,25 +1276,25 @@ function AdminPage() {
                                                 <tr key={`${a.id}-comments`}>
                                                     <td colSpan={6} className="bg-gray-50/60 px-4 py-3">
                                                         {commentState?.loading ? (
-                                                            <div className="text-xs text-gray-400 py-4 text-center">댓글 불러오는 중...</div>
+                                                            <div className="text-caption text-gray-500 py-4 text-center">댓글 불러오는 중...</div>
                                                         ) : commentState?.error ? (
-                                                            <div className="text-xs text-red-500 py-4 text-center">{commentState.error}</div>
+                                                            <div className="text-caption text-red-600 py-4 text-center">{commentState.error}</div>
                                                         ) : commentState?.list.length === 0 ? (
-                                                            <div className="text-xs text-gray-300 py-4 text-center">댓글이 없어요</div>
+                                                            <div className="text-caption text-gray-500 py-4 text-center">댓글이 없어요</div>
                                                         ) : (
                                                             <div className="flex flex-col divide-y divide-gray-100 max-h-[280px] overflow-y-auto">
                                                                 {commentState?.list.map(c => (
-                                                                    <div key={c.id} className="py-2.5 flex items-start justify-between gap-3">
+                                                                    <div key={c.id} className="py-3 flex items-start justify-between gap-3">
                                                                         <div className="min-w-0">
-                                                                            <div className="flex items-center gap-2 mb-0.5">
-                                                                                <span className="text-xs font-bold text-gray-700">{c.authorUsername}</span>
-                                                                                <span className="text-[10px] text-gray-300">{c.createdAt?.slice(0, 10)}</span>
+                                                                            <div className="flex items-center gap-2 mb-1">
+                                                                                <span className="text-caption font-bold text-gray-700">{c.authorUsername}</span>
+                                                                                <span className="text-caption text-gray-500">{c.createdAt?.slice(0, 10)}</span>
                                                                             </div>
-                                                                            <p className="text-sm text-gray-600 whitespace-pre-wrap">{c.content}</p>
+                                                                            <p className="text-body2 text-gray-600 whitespace-pre-wrap">{c.content}</p>
                                                                         </div>
                                                                         <button
                                                                             onClick={() => handleDeleteComment(a.id, c)}
-                                                                            className="text-xs text-red-400 hover:text-red-600 font-medium flex-shrink-0"
+                                                                            className="text-caption text-red-600 hover:text-red-600 font-medium flex-shrink-0"
                                                                         >삭제</button>
                                                                     </div>
                                                                 ))}
@@ -1315,14 +1315,14 @@ function AdminPage() {
                     <button
                         onClick={() => fetchArticles(articlePage + 1)}
                         disabled={articlesLoadingMore}
-                        className="w-full mt-3 text-xs text-gray-400 hover:text-green-600 py-2 border border-dashed border-gray-200 hover:border-green-300 rounded-lg transition-colors"
+                        className="w-full mt-3 text-caption text-gray-500 hover:text-brand py-2 border border-dashed border-gray-200 hover:border-brand-olive rounded-lg transition-colors"
                     >
                         {articlesLoadingMore ? "불러오는 중..." : "더 불러오기"}
                     </button>
                 )}
 
                 {filteredArticles.length > 0 && (
-                    <p className="text-xs text-gray-300 mt-3 text-right">
+                    <p className="text-caption text-gray-500 mt-3 text-right">
                         불러온 {filteredArticles.length}개
                     </p>
                 )}

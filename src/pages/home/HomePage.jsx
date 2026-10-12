@@ -1,22 +1,21 @@
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { getUnreadCountApi } from "../../api/noticeApi";
 import { getUserDevicesApi, deleteDeviceApi, updatePortStatusApi } from "../../api/deviceApi";
-import { createPlantApi, deletePlantApi } from "../../api/plantApi";
+import { finishPlantApi } from "../../api/plantApi";
 import AddDeviceModal from "../../components/device/AddDeviceModal";
 import SelectPlantModal from "../../components/device/SelectPlantModal";
 import { startMonitoringPerformanceRun } from "../../utils/monitoringPerformance";
-import { resolveRanges, isInRange } from "../../utils/sensorRange";
+import { deviceSensorRanges, sharedSensorStatus } from "../../utils/sharedEnvironment";
+import plantIcon from "../../assets/icons/plant.svg";
+import dropdownIcon from "../../assets/icons/dropdown.svg";
+import addIcon from "../../assets/icons/add.svg";
+import temperatureIcon from "../../assets/icons/temperature.svg";
+import humidityIcon from "../../assets/icons/humidity.svg";
+import deviceIcon from "../../assets/icons/device.svg";
+import closeIcon from "../../assets/icons/close.svg";
+import plusSmallIcon from "../../assets/icons/plus-small.svg";
 
 const ICONS = ["🍓", "🌿", "🌱", "🌻", "🍅", "🥬", "🌶️", "🌸"];
-
-const SPECIES_EMOJI = {
-    "방울토마토": "🍅", "청상추": "🥬", "적상추": "🥬",
-    "바질": "🌿", "딸기": "🍓", "파프리카": "🌶️",
-    "브로콜리": "🥦", "고추": "🌶️", "블루베리": "🫐",
-    "페퍼민트": "🌿", "청경채": "🥬", "테이블야자": "🌴",
-    "산세베리아 스투키": "🪴",
-};
 
 const SORT_OPTIONS = [
     { key: "name",   label: "이름순" },
@@ -37,7 +36,14 @@ const formatSensor = (value, unit) => {
     return `${value}${unit}`;
 };
 
-function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMonitoring }) {
+// 센서 칸 상태별 표시 (Figma: 값 없음 17:86 / 정상·이상 17:2560, Status Color)
+const SENSOR_STYLE = {
+    none: { box: "border-gray-200 bg-white",          label: "text-gray-400",     value: "text-gray-500" }, // 데이터 없음, LED OFF
+    ok:   { box: "border-brand-bright bg-success-bg", label: "text-brand-bright", value: "text-brand" },    // 적정 범위, 수위 정상, LED ON
+    bad:  { box: "border-error bg-error-bg",          label: "text-error-sub",    value: "text-error" },    // 범위 벗어남, 수위 부족
+};
+
+function DeviceCard({ device, onDelete, onPortClick, onOpenMonitoring }) {
     const savedIconIndex = localStorage.getItem(`device_icon_${device.serialNumber}`);
     const emoji = (savedIconIndex !== null && savedIconIndex !== undefined)
         ? (ICONS[parseInt(savedIconIndex)] || "🌱")
@@ -45,9 +51,8 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
 
     const portStatus = device.portStatus || "00000000";
 
-    // ✅ 서버 응답에서 직접 품종 정보 읽기 (localStorage 불필요)
-    const speciesName  = device.speciesName  || null;
-    const speciesEmoji = speciesName ? (SPECIES_EMOJI[speciesName] || "🌱") : null;
+    const plants = device.plants || [];
+    const speciesNames = [...new Set(plants.map(plant => plant.species || plant.speciesName).filter(Boolean))];
 
     const [sensor, setSensor] = useState(() => getSensorData(device.serialNumber));
 
@@ -67,128 +72,167 @@ function DeviceCard({ device, onDelete, onPortClick, onSelectSpecies, onOpenMoni
     return (
         <div
             onClick={() => onOpenMonitoring(device.serialNumber, null)}
-            className="bg-white rounded-xl border border-gray-200 p-4 relative cursor-pointer hover:shadow-md transition"
+            className="flex min-w-0 cursor-pointer flex-col gap-4 rounded-2xl bg-white p-5 transition-shadow hover:shadow-md lg:p-8"
         >
-            <button
-                onClick={(e) => { e.stopPropagation(); onDelete(device.serialNumber); }}
-                className="absolute top-3 right-3 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs hover:bg-red-600 transition-colors z-10"
-            >✕</button>
-
-            <div className="flex items-center gap-3 mb-4">
-                <span className="text-3xl">{emoji}</span>
-                <div>
-                    <div className="font-semibold text-gray-800 text-sm">{device.deviceNickname}</div>
-                    <div className="text-xs text-gray-400">{device.serialNumber}</div>
-
-                    {speciesName ? (
-                        <div className="flex items-center gap-1 mt-0.5">
-                            <span className="text-xs text-gray-600 font-medium">
-                                {speciesEmoji} {speciesName}
+            {/* 기기 정보 */}
+            <div className="flex items-start gap-4">
+                <div className="flex size-[100px] shrink-0 items-center justify-center rounded-lg border border-gray-200 text-[56px] leading-none" aria-hidden="true">
+                    {emoji}
+                </div>
+                <div className="flex min-w-0 flex-1 flex-col gap-3">
+                    <p className="truncate text-h4 font-bold text-black">{device.deviceNickname}</p>
+                    <p className="truncate text-body1 text-gray-400">{device.serialNumber}</p>
+                    {plants.length > 0 ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="flex items-center gap-[10px] rounded border border-brand-bright bg-success-bg px-[7px] py-[3px] text-caption font-medium text-brand">
+                                <span className="size-2 rounded-full bg-brand-bright" />
+                                가동중 {plants.length}/8
                             </span>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (portStatus.includes("1")) {
-                                        alert("포트가 켜져 있는 동안은 품종을 변경할 수 없어요.\n모든 포트를 OFF한 후 변경해주세요.");
-                                        return;
-                                    }
-                                    onSelectSpecies(device.serialNumber);
-                                }}
-                                className="text-[10px] text-blue-400 hover:text-blue-600 ml-1 underline"
-                            >변경</button>
+                            {speciesNames.map(name => (
+                                <span key={name} title={name} className="max-w-[84px] truncate rounded-full bg-gray-200 px-2 py-1 text-caption text-gray-900">
+                                    {name}
+                                </span>
+                            ))}
                         </div>
                     ) : (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onSelectSpecies(device.serialNumber); }}
-                            className="flex items-center gap-1 mt-0.5 text-[11px] text-yellow-600 animate-pulse"
-                        >
-                            <span>⚠️ 식물 미등록</span>
-                            <span className="underline">클릭하여 품종 선택</span>
-                        </button>
+                        <p className="py-1 text-caption text-gray-500">빈 포트를 눌러 식물을 추가하세요</p>
                     )}
                 </div>
+                <button
+                    type="button"
+                    aria-label="기기 삭제"
+                    onClick={(e) => { e.stopPropagation(); onDelete(device.serialNumber); }}
+                    className="shrink-0 rounded transition-colors hover:bg-gray-100"
+                >
+                    <img src={closeIcon} alt="" width="36" height="36" />
+                </button>
             </div>
 
-            {/* 포트 박스 그리드 */}
-            <div className="grid grid-cols-4 gap-2 p-2 bg-gray-50 rounded-lg border border-gray-100 mb-4">
-                {[...Array(8)].map((_, index) => {
-                    const isOn = portStatus[index] === "1";
-                    return (
-                        <div
-                            key={index}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                if (!speciesName) { alert("먼저 품종을 선택해주세요."); return; }
-                                onPortClick(device, index, isOn);
-                            }}
-                            className={`flex flex-col items-center justify-center h-14 rounded-md transition-all border cursor-pointer select-none ${
-                                isOn
-                                    ? "bg-green-50 border-green-300 shadow-sm hover:bg-green-100"
-                                    : "bg-gray-100 border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
-                            }`}
-                        >
-                            <span className={`text-[8px] font-bold ${isOn ? "text-green-600" : "text-gray-400"}`}>
-                                P{index + 1}
-                            </span>
-                            {isOn ? (
-                                speciesEmoji
-                                    ? <span className="text-lg">{speciesEmoji}</span>
-                                    : <span className="text-xs font-medium text-green-600">ON</span>
-                            ) : (
-                                <span className="text-xs font-medium text-gray-400">OFF</span>
-                            )}
+            <div className="flex flex-col gap-5">
+                {/* 포트 */}
+                <div className="grid grid-cols-4 gap-4">
+                    {[...Array(8)].map((_, index) => {
+                        const portPlant = plants.find(plant => plant.portIndex === index);
+                        const isOccupied = Boolean(portPlant);
+                        const isOn = portStatus[index] === "1";
+                        const portSpecies = portPlant?.species || portPlant?.speciesName;
+                        return (
+                            <div
+                                key={index}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onPortClick(device, index, isOccupied);
+                                }}
+                                className={`flex h-[68px] min-w-0 cursor-pointer select-none flex-col items-center justify-center gap-1 rounded-lg text-body2 font-medium transition-colors ${
+                                    isOccupied
+                                        ? "border border-brand-bright bg-success-bg"
+                                        : "bg-gray-100 hover:bg-gray-200"
+                                }`}
+                            >
+                                <span className={isOccupied ? "text-brand-bright" : "text-gray-400"}>P{index + 1}</span>
+                                {isOccupied ? (
+                                    <span className="w-[88px] max-w-full truncate px-1 text-center text-brand" title={portSpecies || portPlant.name}>
+                                        {portSpecies || portPlant.name}{isOn ? "" : " · OFF"}
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center gap-1 text-gray-500">
+                                        <img src={plusSmallIcon} alt="" width="16" height="16" />
+                                        추가
+                                    </span>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* 센서 수치 (식물이 2개 이상이면 판정 기준 안내를 툴팁으로 표시) */}
+                <div
+                    className="grid grid-cols-3 gap-4"
+                    title={plants.length > 1 ? "센서값은 기기 공통이며, 표시 색은 심은 모든 품종의 적정 범위를 기준으로 합니다." : undefined}
+                >
+                    {(() => {
+                        const ranges = deviceSensorRanges(plants);
+                        const allInRange = (value, key) => sharedSensorStatus(value, ranges[key]);
+                        const tempOk  = allInRange(temp, "temp");
+                        const humidOk = allInRange(humidity, "humidity");
+                        const phOk    = allInRange(ph, "ph");
+                        const tdsOk   = allInRange(tds, "tds");
+
+                        const getState = (hasData, isOk) => !hasData || !plants.length || isOk === null ? "none" : isOk ? "ok" : "bad";
+
+                        return [
+                            { label: "온도", value: formatSensor(temp, " °C"),                    state: getState(temp     !== null, tempOk)  },
+                            { label: "습도", value: formatSensor(humidity, "%"),                   state: getState(humidity !== null, humidOk) },
+                            { label: "PH",   value: formatSensor(ph, ""),                         state: getState(ph       !== null, phOk)    },
+                            { label: "TDS",  value: tds !== null ? `${Math.round(tds)} ppm` : "-", state: getState(tds      !== null, tdsOk)   },
+                            { label: "수위", value: waterOk === null ? "-" : waterOk ? "정상" : "부족", state: waterOk === null ? "none" : waterOk ? "ok" : "bad" },
+                            { label: "LED",  value: device.ledStatus ? "ON" : "OFF",              state: device.ledStatus ? "ok" : "none" },
+                        ];
+                    })().map(({ label, value, state }) => (
+                        <div key={label} className={`flex h-[72px] min-w-0 flex-col items-center justify-center gap-1 rounded-lg border font-medium ${SENSOR_STYLE[state].box}`}>
+                            <span className={`text-body1 ${SENSOR_STYLE[state].label}`}>{label}</span>
+                            <span className={`max-w-full truncate text-h4 ${SENSOR_STYLE[state].value}`}>{value}</span>
                         </div>
-                    );
-                })}
+                    ))}
+                </div>
             </div>
+        </div>
+    );
+}
 
-            {/* 센서 수치 */}
-            <div className="grid grid-cols-3 gap-2 text-center">
-                {(() => {
-                    const ranges  = resolveRanges(device);
-                    const tempOk  = isInRange(temp, ranges.temp);
-                    const humidOk = isInRange(humidity, ranges.humidity);
-                    const phOk    = isInRange(ph, ranges.ph);
-                    const tdsOk   = isInRange(tds, ranges.tds);
+// 정렬 드롭다운 (Figma): 버튼엔 현재 기준, 메뉴엔 나머지 기준
+function SortDropdown({ value, onChange }) {
+    const [open, setOpen] = useState(false);
+    const ref = useRef(null);
+    const current = SORT_OPTIONS.find(option => option.key === value);
 
-                    const getColor = (hasData, isOk) => !hasData ? "text-gray-300" : isOk ? "text-green-500" : "text-orange-400";
-                    const getBg    = (hasData, isOk) => !hasData ? "bg-gray-50"    : isOk ? "bg-green-50"   : "bg-orange-50";
+    useEffect(() => {
+        if (!open) return;
+        const close = (e) => {
+            if (!ref.current?.contains(e.target)) setOpen(false);
+        };
+        document.addEventListener("mousedown", close);
+        return () => document.removeEventListener("mousedown", close);
+    }, [open]);
 
-                    return [
-                        { label: "온도", value: formatSensor(temp, "°C"),                           color: getColor(temp     !== null, tempOk),  bg: getBg(temp     !== null, tempOk)  },
-                        { label: "습도", value: formatSensor(humidity, "%"),                         color: getColor(humidity !== null, humidOk), bg: getBg(humidity !== null, humidOk) },
-                        { label: "pH",   value: formatSensor(ph, ""),                               color: getColor(ph       !== null, phOk),    bg: getBg(ph       !== null, phOk)    },
-                        { label: "TDS",  value: tds !== null ? `${Math.round(tds)}ppm` : "-",       color: getColor(tds      !== null, tdsOk),   bg: getBg(tds      !== null, tdsOk)   },
-                        {
-                            label: "수위",
-                            value: waterOk === null ? "-" : waterOk ? "정상" : "부족",
-                            color: waterOk === null ? "text-gray-300" : waterOk ? "text-blue-500" : "text-red-400",
-                            bg:    waterOk === null ? "bg-gray-50"    : waterOk ? "bg-blue-50"   : "bg-red-50",
-                        },
-                        {
-                            label: "LED",
-                            value: device.ledStatus ? "ON" : "OFF",
-                            color: device.ledStatus ? "text-yellow-500" : "text-gray-400",
-                            bg:    "bg-gray-50",
-                        },
-                    ];
-                })().map(({ label, value, color, bg }) => (
-                    <div key={label} className={`${bg} rounded-lg py-2`}>
-                        <div className="text-xs text-gray-400">{label}</div>
-                        <div className={`text-sm font-semibold ${color}`}>{value}</div>
-                    </div>
-                ))}
-            </div>
+    return (
+        <div ref={ref} className="relative">
+            <button
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded={open}
+                onClick={() => setOpen(v => !v)}
+                className="flex items-center gap-1 rounded bg-white px-4 py-2"
+            >
+                <span className="min-w-[52px] whitespace-nowrap text-left text-body1 font-medium text-gray-700">{current.label}</span>
+                <img src={dropdownIcon} alt="" width="24" height="24" />
+            </button>
+            {open && (
+                <ul role="listbox" className="absolute left-0 top-[calc(100%+6px)] z-20 flex flex-col overflow-hidden rounded">
+                    {SORT_OPTIONS.filter(option => option.key !== value).map(({ key, label }) => (
+                        <li key={key} role="option" aria-selected="false">
+                            <button
+                                type="button"
+                                onClick={() => { onChange(key); setOpen(false); }}
+                                className="w-28 whitespace-nowrap bg-gray-200 px-4 py-2 text-left text-body1 font-medium text-gray-600 hover:bg-gray-400 hover:text-black"
+                            >
+                                {label}
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            )}
         </div>
     );
 }
 
 function HomePage() {
     const [devices, setDevices]       = useState([]);
-    const [unreadCount, setUnreadCount] = useState(0);
     const [showAddModal, setShowAddModal] = useState(false);
     const [sortKey, setSortKey]       = useState("name");
-    const [selectingSpeciesSerial, setSelectingSpeciesSerial] = useState(null);
+    const [selectingPlant, setSelectingPlant] = useState(null);
+    const [endingPlant, setEndingPlant] = useState(null);
+    const [endingLoading, setEndingLoading] = useState(false);
 
     const navigate = useNavigate();
 
@@ -204,9 +248,6 @@ function HomePage() {
         if (!token) return;
         getUserDevicesApi()
             .then(res => setDevices(res.data))
-            .catch(err => console.error(err));
-        getUnreadCountApi()
-            .then(res => setUnreadCount(res.data))
             .catch(err => console.error(err));
     }, []);
 
@@ -246,18 +287,12 @@ function HomePage() {
         }
     };
 
-    const handlePortClick = async (device, portIndex, isCurrentlyOn) => {
-        if (isCurrentlyOn) {
+    const handlePortClick = async (device, portIndex, isOccupied) => {
+        if (isOccupied) {
             const portPlant = device.plants?.find(p => p.portIndex === portIndex);
             if (portPlant) {
-                if (!window.confirm(`P${portIndex + 1} 포트를 OFF하면 식물이 삭제됩니다. 계속할까요?`)) return;
-                try {
-                    await deletePlantApi(portPlant.id);
-                } catch (err) {
-                    console.error(err);
-                    alert("식물 삭제에 실패했습니다.");
-                    return;
-                }
+                setEndingPlant({ plant: portPlant, portIndex });
+                return;
             }
             try {
                 await updatePortStatusApi(device.serialNumber, portIndex, false);
@@ -267,30 +302,23 @@ function HomePage() {
                 alert("포트 제어에 실패했습니다.");
             }
         } else {
-            // ✅ 서버에서 받은 speciesId 사용
-            if (!device.speciesId) { alert("먼저 품종을 선택해주세요."); return; }
-            try {
-                await createPlantApi({
-                    name:        device.speciesName,
-                    speciesId:   device.speciesId,
-                    serialNumber: device.serialNumber,
-                    portIndex,
-                    plantStage:  "SEED",
-                    plantedAt:   new Date().toISOString(),
-                });
-                await updatePortStatusApi(device.serialNumber, portIndex, true);
-                await fetchDevices();
-            } catch (err) {
-                console.error(err);
-                alert(err.response?.data?.message || "식물 등록에 실패했습니다.");
-            }
+            setSelectingPlant({ serialNumber: device.serialNumber, portIndex });
         }
     };
 
-    // ✅ 품종 선택 완료 콜백 — 서버에 이미 저장됐으므로 fetchDevices만 호출
-    const handleSpeciesSelected = async () => {
-        setSelectingSpeciesSerial(null);
-        await fetchDevices();
+    const handleFinishPlant = async (reason) => {
+        if (!endingPlant || endingLoading) return;
+        setEndingLoading(true);
+        try {
+            await finishPlantApi(endingPlant.plant.id, reason);
+            setEndingPlant(null);
+            await fetchDevices();
+        } catch (err) {
+            console.error(err);
+            alert(err.response?.data?.message || err.response?.data || "재배 종료에 실패했습니다.");
+        } finally {
+            setEndingLoading(false);
+        }
     };
 
     const handleOpenMonitoring = (serial, portIndex) => {
@@ -303,106 +331,89 @@ function HomePage() {
         });
     };
 
+    const handleAddDevice = () => {
+        const token = localStorage.getItem("token");
+        if (!token) { navigate("/login"); return; }
+        setShowAddModal(true);
+    };
+
     const avgTemp     = getAverage(devices, "temperature");
     const avgHumidity = getAverage(devices, "humidity");
 
+    // 미확인 알림은 상단 바의 알림 버튼으로 이동
     const summaryItems = [
-        { icon: "🌡", label: "평균 온도",   value: avgTemp     === "-" ? "-" : `${avgTemp}°C`,    color: "text-green-600" },
-        { icon: "💧", label: "평균 습도",   value: avgHumidity === "-" ? "-" : `${avgHumidity}%`, color: "text-green-600" },
-        { icon: "⚡", label: "활성 기기",   value: `${devices.length}대`,                         color: "text-green-600" },
-        { icon: "🔔", label: "미확인 알림", value: `${unreadCount}건`,                            color: "text-green-600", onClick: () => navigate("/notifications") },
+        { icon: temperatureIcon, label: "평균 온도", value: avgTemp     === "-" ? "-" : `${avgTemp}°C`,    gap: "gap-1" },
+        { icon: humidityIcon,    label: "평균 습도", value: avgHumidity === "-" ? "-" : `${avgHumidity}%`, gap: "gap-1" },
+        { icon: deviceIcon,      label: "활성 기기", value: `${devices.length}대`,                         gap: "gap-2" },
     ];
 
     const sortedDevices = getSortedDevices();
 
     return (
-        <div className="flex flex-col lg:flex-row gap-6">
-            <div className="w-full lg:w-64 lg:flex-shrink-0 flex flex-col gap-4">
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                    <div className="text-sm font-semibold text-gray-700 mb-3">바로가기</div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <button onClick={() => navigate("/diary")}
-                            className="flex flex-col items-center gap-1 p-3 rounded-lg bg-green-50 hover:bg-green-100 transition-colors">
-                            <span className="text-xl">📔</span>
-                            <span className="text-xs text-gray-600">다이어리</span>
-                        </button>
-                        <button onClick={() => navigate("/mypage")}
-                            className="flex flex-col items-center gap-1 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
-                            <span className="text-xl">🤍</span>
-                            <span className="text-xs text-gray-600">마이페이지</span>
-                        </button>
-                    </div>
+        // PC: 상단 바(88) + 간격(24)을 뺀 화면 높이에 맞추고 카드 목록만 내부 스크롤 (Figma)
+        <div className="@container flex flex-col gap-6 lg:h-[calc(var(--screen-h)-112px)]">
+            {/* 섹션 헤더 */}
+            <div className="flex flex-wrap items-end justify-between gap-4">
+                <div className="flex items-center gap-3">
+                    <img src={plantIcon} alt="" width="48" height="48" />
+                    <h2 className="text-h2 font-bold text-gray-800">나의 농장</h2>
                 </div>
-
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                    <div className="text-sm font-semibold text-gray-700 mb-3">전체 환경 요약</div>
-                    <div className="flex flex-col gap-2 text-sm">
-                        {summaryItems.map(({ icon, label, value, color, onClick }) => (
-                            <div key={label} onClick={onClick}
-                                className={`flex justify-between items-center py-1 border-b border-gray-50 last:border-0 ${onClick ? "cursor-pointer hover:bg-gray-50 rounded px-1 -mx-1 transition-colors" : ""}`}>
-                                <span className="text-gray-500">{icon} {label}</span>
-                                <span className={`font-semibold ${color}`}>{value}</span>
-                            </div>
-                        ))}
-                    </div>
+                <div className="flex items-center gap-6">
+                    <SortDropdown value={sortKey} onChange={setSortKey} />
+                    <button
+                        type="button"
+                        onClick={handleAddDevice}
+                        className="flex items-center gap-2 rounded bg-brand px-5 py-2 transition-colors hover:bg-brand-deep"
+                    >
+                        <img src={addIcon} alt="" width="24" height="24" />
+                        <span className="w-[72px] text-center text-body1 font-medium text-white">기기 추가</span>
+                    </button>
                 </div>
             </div>
 
-            <div className="flex-grow min-w-0">
-                <div className="flex justify-between items-center mb-4">
-                    <div className="flex items-center gap-3">
-                        <h2 className="text-lg font-bold text-gray-800">My Farm</h2>
-                        <div className="flex gap-1">
-                            {SORT_OPTIONS.map(({ key, label }) => (
-                                <button key={key} onClick={() => setSortKey(key)}
-                                    className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                                        sortKey === key
-                                            ? "bg-green-600 text-white"
-                                            : "bg-white border border-gray-200 text-gray-500 hover:border-green-400 hover:text-green-600"
-                                    }`}>{label}</button>
-                            ))}
-                        </div>
-                    </div>
-                    <button
-                        onClick={() => {
-                            const token = localStorage.getItem("token");
-                            if (!token) { navigate("/login"); return; }
-                            setShowAddModal(true);
-                        }}
-                        className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-                        + 기기 추가
-                    </button>
+            {/* 전체 환경 요약 (기기가 있을 때만 — 기기가 없으면 Figma 17:2491처럼 빈 박스만) */}
+            {sortedDevices.length > 0 && (
+            <div className="flex shrink-0 flex-col gap-4 rounded-2xl bg-white p-5 lg:p-8 @[1080px]:h-[92px] @[1080px]:flex-row @[1080px]:items-center @[1080px]:gap-[76px] @[1080px]:py-0">
+                <p className="shrink-0 text-h4 font-bold text-gray-700 @[1080px]:w-36">전체 환경 요약</p>
+                {/* 넓을 때: 한 줄, 항목 사이 간격 48(Figma). 값이 길어지면 간격만 줄어듦 */}
+                <div className="flex flex-wrap items-center gap-x-12 gap-y-3 @[1080px]:flex-1 @[1080px]:flex-nowrap @[1080px]:justify-between @[1080px]:gap-x-0">
+                    {summaryItems.map(({ icon, label, value, gap }, index) => (
+                        <Fragment key={label}>
+                            {index > 0 && <span className="hidden h-6 w-1 shrink-0 bg-gray-300 @[1080px]:block" />}
+                            <div className="flex shrink-0 items-center gap-2">
+                                <div className={`flex items-center ${gap}`}>
+                                    <img src={icon} alt="" width="28" height="28" />
+                                    <span className="w-[100px] text-h4 font-medium text-gray-500">{label}</span>
+                                </div>
+                                <span className="min-w-16 whitespace-nowrap text-h4 font-bold text-brand">{value}</span>
+                            </div>
+                        </Fragment>
+                    ))}
                 </div>
+            </div>
+            )}
 
-                {sortedDevices.length === 0 ? (
-                    <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
-                        <div className="text-4xl mb-3">🌱</div>
-                        <p className="text-gray-400 text-sm">등록된 기기가 없어요</p>
-                        <button
-                            onClick={() => {
-                                const token = localStorage.getItem("token");
-                                if (!token) { navigate("/login"); return; }
-                                setShowAddModal(true);
-                            }}
-                            className="mt-4 bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-                            + 기기 추가하기
-                        </button>
-                    </div>
-                ) : (
-                    <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 ${sortedDevices.length > 4 ? "max-h-[900px] overflow-y-auto pr-1" : ""}`}>
+            {sortedDevices.length === 0 ? (
+                // 빈 상태 (Figma 17:2491, 로그아웃·기기 0대 공통): 남은 높이를 채우는 gray-200 박스, 아래 여백 24
+                <div className="flex min-h-60 items-center justify-center rounded-2xl bg-gray-200 lg:mb-6 lg:flex-1">
+                    <p className="text-sub1 font-medium text-gray-500">등록된 기기가 없어요</p>
+                </div>
+            ) : (
+                // 기기 카드 목록: 이 영역만 내부 스크롤
+                <div className="@container lg:min-h-0 lg:flex-1 lg:overflow-y-scroll lg:scrollbar-growlab">
+                    <div className="grid grid-cols-1 gap-6 pb-6 @[1000px]:grid-cols-2">
                         {sortedDevices.map(device => (
                             <DeviceCard
                                 key={device.serialNumber}
                                 device={device}
                                 onDelete={handleDelete}
                                 onPortClick={handlePortClick}
-                                onSelectSpecies={(serial) => setSelectingSpeciesSerial(serial)}
                                 onOpenMonitoring={handleOpenMonitoring}
                             />
                         ))}
                     </div>
-                )}
-            </div>
+                </div>
+            )}
 
             {showAddModal && (
                 <AddDeviceModal
@@ -411,13 +422,31 @@ function HomePage() {
                 />
             )}
 
-            {selectingSpeciesSerial && (
+            {selectingPlant && (
                 <SelectPlantModal
-                    serialNumber={selectingSpeciesSerial}
-                    portIndex={null}
-                    onClose={() => setSelectingSpeciesSerial(null)}
-                    onSuccess={handleSpeciesSelected}
+                    serialNumber={selectingPlant.serialNumber}
+                    portIndex={selectingPlant.portIndex}
+                    existingPlants={devices.find(device => device.serialNumber === selectingPlant.serialNumber)?.plants || []}
+                    onClose={() => setSelectingPlant(null)}
+                    onSuccess={fetchDevices}
                 />
+            )}
+
+            {endingPlant && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+                        <h2 className="text-body1 font-bold text-gray-800">P{endingPlant.portIndex + 1} 재배 종료</h2>
+                        <p className="mt-2 text-body2 text-gray-600">{endingPlant.plant.name} 재배를 어떻게 마쳤나요? 기록과 일지는 보존됩니다.</p>
+                        <div className="mt-5 flex flex-col gap-2">
+                            <button disabled={endingLoading} onClick={() => handleFinishPlant("HARVESTED")}
+                                className="rounded-lg bg-brand px-4 py-3 text-body2 font-medium text-white hover:bg-brand-deep disabled:opacity-50">수확했어요</button>
+                            <button disabled={endingLoading} onClick={() => handleFinishPlant("DIED")}
+                                className="rounded-lg border border-gray-200 px-4 py-3 text-body2 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">병들거나 시들어 죽었어요</button>
+                            <button disabled={endingLoading} onClick={() => setEndingPlant(null)}
+                                className="px-4 py-2 text-body2 text-gray-500 disabled:opacity-50">취소</button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

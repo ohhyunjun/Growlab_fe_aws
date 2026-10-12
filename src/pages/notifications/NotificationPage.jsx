@@ -9,8 +9,8 @@ import {
 
 const PRIORITY_STYLE = {
     1: { label: "긴급", style: "bg-red-100 text-red-600" },
-    2: { label: "경고", style: "bg-yellow-100 text-yellow-600" },
-    3: { label: "정보", style: "bg-blue-100 text-blue-600" },
+    2: { label: "경고", style: "bg-amber-50 text-amber-700" },
+    3: { label: "정보", style: "bg-brand-cream text-brand" },
 };
 
 const TYPE_ICON = {
@@ -70,20 +70,20 @@ function NotificationPage() {
     const unreadCount = notices.filter(n => !n.read).length;
 
     return (
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-col-6 mx-auto">
             {/* 헤더 */}
             <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-2">
-                    <h1 className="text-xl font-bold text-gray-800">알림</h1>
+                    <h1 className="text-sub1 font-bold text-gray-800">알림</h1>
                     {unreadCount > 0 && (
-                        <span className="bg-green-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                        <span className="bg-brand text-white text-caption font-bold px-2 py-1 rounded-full">
                             {unreadCount}
                         </span>
                     )}
                 </div>
                 <div className="flex gap-2">
                     {/* 필터 */}
-                    <div className="flex bg-gray-100 rounded-lg p-1 text-sm">
+                    <div className="flex bg-gray-100 rounded-lg p-1 text-body2">
                         <button
                             onClick={() => setFilter("all")}
                             className={`px-3 py-1 rounded-md transition-colors ${filter === "all" ? "bg-white text-gray-800 shadow-sm" : "text-gray-500"}`}
@@ -96,7 +96,7 @@ function NotificationPage() {
                     {unreadCount > 0 && (
                         <button
                             onClick={handleReadAll}
-                            className="text-sm text-green-600 hover:text-green-700 font-medium px-3 py-1 border border-green-200 rounded-lg hover:bg-green-50 transition-colors"
+                            className="text-body2 text-brand hover:text-brand-deep font-medium px-3 py-1 border border-brand-olive/40 rounded-lg hover:bg-brand-cream transition-colors"
                         >
                             모두 읽음
                         </button>
@@ -106,11 +106,11 @@ function NotificationPage() {
 
             {/* 알림 목록 */}
             {loading ? (
-                <div className="text-center text-gray-400 py-20">불러오는 중...</div>
+                <div className="text-center text-gray-500 py-20">불러오는 중...</div>
             ) : filtered.length === 0 ? (
                 <div className="text-center py-20">
-                    <div className="text-4xl mb-3">🔔</div>
-                    <p className="text-gray-400">알림이 없어요</p>
+                    <div className="text-h1 mb-3">🔔</div>
+                    <p className="text-gray-500">알림이 없어요</p>
                 </div>
             ) : (
                 <div className="flex flex-col gap-3">
@@ -123,23 +123,23 @@ function NotificationPage() {
                                 className={`bg-white rounded-xl border p-4 flex gap-3 transition-colors ${notice.read ? "border-gray-100 opacity-70" : "border-gray-200"}`}
                             >
                                 {/* 아이콘 */}
-                                <div className="text-2xl pt-0.5">{icon}</div>
+                                <div className="text-h4 pt-1">{icon}</div>
 
                                 {/* 내용 */}
                                 <div className="flex-grow">
                                     <div className="flex items-center gap-2 mb-1">
-                                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${priority.style}`}>
+                                        <span className={`text-caption px-2 py-1 rounded-full font-medium ${priority.style}`}>
                                             {priority.label}
                                         </span>
                                         {notice.deviceSerial && (
-                                            <span className="text-xs text-gray-400">{notice.deviceSerial}</span>
+                                            <span className="text-caption text-gray-500">{notice.deviceSerial}</span>
                                         )}
                                         {!notice.read && (
-                                            <span className="w-2 h-2 bg-green-500 rounded-full ml-auto"></span>
+                                            <span className="w-2 h-2 bg-brand rounded-full ml-auto"></span>
                                         )}
                                     </div>
-                                    <p className="text-sm text-gray-700">{notice.message}</p>
-                                    <p className="text-xs text-gray-400 mt-1">{new Date(notice.createdAt).toLocaleString("ko-KR")}</p>
+                                    <p className="text-body2 text-gray-700">{notice.message}</p>
+                                    <p className="text-caption text-gray-500 mt-1">{new Date(notice.createdAt).toLocaleString("ko-KR")}</p>
                                 </div>
 
                                 {/* 액션 버튼 */}
@@ -147,12 +147,12 @@ function NotificationPage() {
                                     {!notice.read && (
                                         <button
                                             onClick={() => handleRead(notice.id)}
-                                            className="text-xs text-green-600 hover:text-green-700 font-medium whitespace-nowrap"
+                                            className="text-caption text-brand hover:text-brand-deep font-medium whitespace-nowrap"
                                         >읽음</button>
                                     )}
                                     <button
                                         onClick={() => handleDelete(notice.id)}
-                                        className="text-xs text-gray-300 hover:text-red-400 transition-colors"
+                                        className="text-caption text-gray-500 hover:text-red-600 transition-colors"
                                     >삭제</button>
                                 </div>
                             </div>
