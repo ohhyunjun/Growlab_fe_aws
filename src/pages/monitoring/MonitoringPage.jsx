@@ -986,7 +986,7 @@ function MonitoringPage() {
     const [isLedAuto, setIsLedAuto] = useState(saved?.isLedAuto ?? false);
     const [ledStart, setLedStart] = useState(saved?.ledStart ?? "06:00");
     const [ledEnd, setLedEnd] = useState(saved?.ledEnd ?? "22:00");
-    const [captureInterval, setCaptureInterval] = useState(saved?.captureInterval ?? 12);
+    const [captureInterval, setCaptureInterval] = useState(6);
     const [saveMessage, setSaveMessage] = useState("");
     const [ledSaving, setLedSaving] = useState(false);
     const [captureSaving, setCaptureSaving] = useState(false);
@@ -1063,6 +1063,12 @@ function MonitoringPage() {
                 });
 
                 if (found) {
+                    setIsLedOn(found.ledStatus ?? true);
+                    setIsLedAuto(found.ledMode ?? false);
+                    setLedStart(found.ledOnTime ?? "06:00");
+                    setLedEnd(found.ledOffTime ?? "22:00");
+                    setCaptureInterval(found.photoInterval >= 1 && found.photoInterval <= 6
+                        ? found.photoInterval : 6);
                     const targetPort = targetPortIndex;
                     if (targetPort !== null && targetPort !== undefined) {
                         setSelectedPort(targetPort);
@@ -1311,14 +1317,28 @@ function MonitoringPage() {
         } finally { setCaptureSaving(false); }
     };
 
-    const handleResetSettings = () => {
+    const handleResetSettings = async () => {
         if (!window.confirm("설정을 초기화할까요?")) return;
-        localStorage.removeItem(storageKey);
-        setIsLedOn(true); setIsLedAuto(false);
-        setLedStart("06:00"); setLedEnd("22:00");
-        setCaptureInterval(12);
-        setSaveMessage("✓ 초기화되었습니다");
-        setTimeout(() => setSaveMessage(""), 2000);
+        setLedSaving(true);
+        setCaptureSaving(true);
+        try {
+            await updateLedApi(serialNumber, { ledMode: false, ledStatus: true });
+            setIsLedOn(true);
+            setIsLedAuto(false);
+            await updatePhotoIntervalApi(serialNumber, 6);
+            setCaptureInterval(6);
+            setLedStart("06:00");
+            setLedEnd("22:00");
+            localStorage.removeItem(storageKey);
+            setSaveMessage("✓ 기기 설정이 초기화되었습니다");
+        } catch (e) {
+            console.error("[Settings reset]", e);
+            setSaveMessage("⚠ 일부 기기 설정을 초기화하지 못했어요");
+        } finally {
+            setLedSaving(false);
+            setCaptureSaving(false);
+            setTimeout(() => setSaveMessage(""), 3000);
+        }
     };
 
     // 선택 포트의 성장 추이(관측 크기) + 또래 비교. 성장추이 카드/현재관측/문제분석이 공유.
@@ -1548,11 +1568,9 @@ function MonitoringPage() {
                                 <div className="flex flex-col gap-2">
                                     <select value={captureInterval} onChange={e => setCaptureInterval(Number(e.target.value))}
                                         className="w-full border border-gray-100 rounded-lg px-2 py-2 text-caption focus:outline-none focus:ring-1 focus:ring-brand-leaf">
-                                        <option value={1}>1시간</option>
-                                        <option value={3}>3시간</option>
-                                        <option value={6}>6시간</option>
-                                        <option value={12}>12시간</option>
-                                        <option value={24}>24시간</option>
+                                        {[1, 2, 3, 4, 5, 6].map(hours =>
+                                            <option key={hours} value={hours}>{hours}시간</option>
+                                        )}
                                     </select>
                                     <button onClick={handleCaptureSave} disabled={captureSaving}
                                         className="w-full bg-brand hover:bg-brand-deep disabled:opacity-50 text-white text-caption font-bold py-2 rounded-lg transition-colors">
@@ -1569,8 +1587,8 @@ function MonitoringPage() {
                                 {saveMessage}
                             </div>
                         )}
-                        <button onClick={handleResetSettings}
-                            className="w-full mt-4 border border-gray-200 text-gray-500 hover:bg-gray-50 text-body2 py-3 rounded-xl transition-colors">
+                        <button onClick={handleResetSettings} disabled={ledSaving || captureSaving}
+                            className="w-full mt-4 border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50 text-body2 py-3 rounded-xl transition-colors">
                             설정 초기화
                         </button>
                     </div>
