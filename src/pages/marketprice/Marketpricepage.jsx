@@ -52,9 +52,9 @@ function getPriceTrend(weekly) {
     const last = history[history.length - 1].price;
     const prev = history[history.length - 2].price;
     const diff = last - prev;
-    if (diff > 0) return { dir: "up",   label: `+${diff.toLocaleString()}원`, color: "text-red-500" };
-    if (diff < 0) return { dir: "down", label: `${diff.toLocaleString()}원`,  color: "text-blue-500" };
-    return { dir: "flat", label: "변동없음", color: "text-gray-400" };
+    if (diff > 0) return { dir: "up",   label: `+${diff.toLocaleString()}원`, color: "text-red-600" };
+    if (diff < 0) return { dir: "down", label: `${diff.toLocaleString()}원`,  color: "text-brand" };
+    return { dir: "flat", label: "변동없음", color: "text-gray-500" };
 }
 
 // 미니 바 차트
@@ -62,8 +62,8 @@ function MiniBarChart({ history, marketType }) {
     if (!history || history.length === 0) return null;
     const values = history.map(d => d.price ?? 0);
     const max = Math.max(...values, 1);
-    const activeColor  = marketType === "WHOLESALE" ? "bg-blue-500"  : "bg-green-500";
-    const inactiveColor = marketType === "WHOLESALE" ? "bg-blue-100" : "bg-green-100";
+    const activeColor  = marketType === "WHOLESALE" ? "bg-brand-olive"  : "bg-brand";
+    const inactiveColor = marketType === "WHOLESALE" ? "bg-brand-cream" : "bg-brand-cream";
     return (
         <div className="flex items-end gap-1 h-12">
             {values.map((v, i) => (
@@ -115,44 +115,44 @@ function PriceCard({ item, onClick, isSelected, marketType }) {
             className={`bg-white rounded-2xl border p-4 shadow-sm cursor-pointer transition-all hover:shadow-md ${
                 isSelected
                     ? isWholesale
-                        ? "border-blue-400 ring-2 ring-blue-100"
-                        : "border-green-400 ring-2 ring-green-100"
+                        ? "border-brand-olive ring-2 ring-brand-cream"
+                        : "border-brand-olive ring-2 ring-brand-cream"
                     : "border-gray-100"
             }`}
         >
             <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                    <span className="text-2xl">{item.emoji}</span>
-                    <span className="text-sm font-semibold text-gray-800">{item.name}</span>
+                    <span className="text-h4">{item.emoji}</span>
+                    <span className="text-body2 font-bold text-gray-800">{item.name}</span>
                 </div>
                 {trend && (
-                    <span className={`text-xs font-medium ${trend.color}`}>
+                    <span className={`text-caption font-medium ${trend.color}`}>
                         {trend.dir === "up" ? "▲" : trend.dir === "down" ? "▼" : "—"} {trend.label}
                     </span>
                 )}
             </div>
 
             {status === "loading" && (
-                <div className="h-16 flex items-center justify-center text-gray-300 text-xs">불러오는 중...</div>
+                <div className="h-16 flex items-center justify-center text-gray-500 text-caption">불러오는 중...</div>
             )}
             {status === "error" && (
-                <div className="h-16 flex items-center justify-center text-gray-300 text-xs">데이터 없음</div>
+                <div className="h-16 flex items-center justify-center text-gray-500 text-caption">데이터 없음</div>
             )}
             {status === "ok" && (
                 <>
-                    <div className="mb-3 text-xs">
-                        <div className={`rounded-xl p-2 text-center ${isWholesale ? "bg-blue-50" : "bg-green-50"}`}>
-                            <p className="text-gray-400 mb-0.5">현재가</p>
-                            <p className={`font-bold ${isWholesale ? "text-blue-600" : "text-green-600"}`}>
+                    <div className="mb-3 text-caption">
+                        <div className={`rounded-xl p-2 text-center ${isWholesale ? "bg-brand-cream" : "bg-brand-cream"}`}>
+                            <p className="text-gray-500 mb-1">현재가</p>
+                            <p className={`font-bold ${isWholesale ? "text-brand" : "text-brand"}`}>
                                 {price != null ? `${price.toLocaleString()}원` : "-"}
                             </p>
                         </div>
                     </div>
                     <MiniBarChart history={aggregatedHistory} marketType={marketType} />
-                    <div className="flex justify-between text-[10px] text-gray-300 mt-1">
+                    <div className="flex justify-between text-caption text-gray-500 mt-1">
                         <span>{firstHistoryDate ?? "-"}</span><span>{lastHistoryDate ?? "-"}</span>
                     </div>
-                    <p className="text-[10px] text-gray-300 mt-1.5 text-right">
+                    <p className="text-caption text-gray-500 mt-2 text-right">
                         단위: {unit ?? "-"}
                     </p>
                 </>
@@ -165,8 +165,8 @@ function PriceCard({ item, onClick, isSelected, marketType }) {
 function DetailPanel({ item, latest, weekly, onClose, marketType }) {
     if (!item) return (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 flex flex-col items-center justify-center text-center h-full min-h-[300px]">
-            <span className="text-4xl mb-3">📊</span>
-            <p className="text-sm text-gray-400">품목을 선택하면<br />상세 가격 정보를 볼 수 있어요</p>
+            <span className="text-h1 mb-3">📊</span>
+            <p className="text-body2 text-gray-500">품목을 선택하면<br />상세 가격 정보를 볼 수 있어요</p>
         </div>
     );
 
@@ -186,52 +186,52 @@ function DetailPanel({ item, latest, weekly, onClose, marketType }) {
             {/* 헤더 */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <span className="text-3xl">{item.emoji}</span>
+                    <span className="text-h2">{item.emoji}</span>
                     <div>
-                        <h2 className="text-base font-bold text-gray-800">{item.name}</h2>
-                        <p className="text-xs text-gray-400 flex items-center gap-1.5">
+                        <h2 className="text-body1 font-bold text-gray-800">{item.name}</h2>
+                        <p className="text-caption text-gray-500 flex items-center gap-2">
                             {weekly?.kindName && `${weekly.kindName} · `}
                             단위: {weekly?.unit ?? "-"}
-                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                            <span className={`px-2 py-1 rounded-full text-caption font-medium ${
                                 isWholesale
-                                    ? "bg-blue-100 text-blue-600"
-                                    : "bg-green-100 text-green-600"
+                                    ? "bg-brand-cream text-brand"
+                                    : "bg-brand-cream text-brand"
                             }`}>
                                 {isWholesale ? "도매" : "소매"}
                             </span>
                         </p>
                     </div>
                 </div>
-                <button onClick={onClose} className="text-gray-300 hover:text-gray-500 text-lg">✕</button>
+                <button onClick={onClose} className="text-gray-500 hover:text-gray-500 text-sub1">✕</button>
             </div>
 
             {/* 현재가 + 최근 7개 거래일 평균 */}
             {weekly && (
                 <div className="grid grid-cols-2 gap-3">
-                    <div className={`rounded-2xl p-4 text-center ${isWholesale ? "bg-blue-50" : "bg-green-50"}`}>
-                        <p className="text-xs text-gray-400 mb-1">현재가</p>
-                        <p className={`text-2xl font-bold ${isWholesale ? "text-blue-600" : "text-green-600"}`}>
+                    <div className={`rounded-2xl p-4 text-center ${isWholesale ? "bg-brand-cream" : "bg-brand-cream"}`}>
+                        <p className="text-caption text-gray-500 mb-1">현재가</p>
+                        <p className={`text-h4 font-bold ${isWholesale ? "text-brand" : "text-brand"}`}>
                             {currentPrice != null
                                 ? currentPrice.toLocaleString() : "-"}
                         </p>
-                        <p className={`text-xs ${isWholesale ? "text-blue-400" : "text-green-400"}`}>원</p>
+                        <p className={`text-caption ${isWholesale ? "text-brand" : "text-brand"}`}>원</p>
                     </div>
                     <div className="bg-gray-50 rounded-2xl p-4 text-center">
-                        <p className="text-xs text-gray-400 mb-1">7거래일 평균</p>
-                        <p className="text-2xl font-bold text-gray-600">
+                        <p className="text-caption text-gray-500 mb-1">7거래일 평균</p>
+                        <p className="text-h4 font-bold text-gray-600">
                             {avgPrice != null ? avgPrice.toLocaleString() : "-"}
                         </p>
-                        <p className="text-xs text-gray-400">원</p>
+                        <p className="text-caption text-gray-500">원</p>
                     </div>
                 </div>
             )}
 
             {/* 전일 대비 */}
             {trend && (
-                <div className={`rounded-xl px-4 py-2.5 flex items-center justify-between text-sm ${
-                    trend.dir === "up"   ? "bg-red-50 text-red-500" :
-                    trend.dir === "down" ? "bg-blue-50 text-blue-500" :
-                    "bg-gray-50 text-gray-400"
+                <div className={`rounded-xl px-4 py-3 flex items-center justify-between text-body2 ${
+                    trend.dir === "up"   ? "bg-red-50 text-red-600" :
+                    trend.dir === "down" ? "bg-brand-cream text-brand" :
+                    "bg-gray-50 text-gray-500"
                 }`}>
                     <span className="font-medium">전일 대비</span>
                     <span className="font-bold">
@@ -243,12 +243,12 @@ function DetailPanel({ item, latest, weekly, onClose, marketType }) {
             {/* 변동 상태 배지 */}
             {weekly?.changeStatus && (
                 <div className="flex justify-end">
-                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                    <span className={`text-caption px-2 py-1 rounded-full font-medium ${
                         weekly.changeStatus === "SHARP_RISE" ? "bg-red-100 text-red-600" :
-                        weekly.changeStatus === "RISE"       ? "bg-orange-100 text-orange-600" :
+                        weekly.changeStatus === "RISE"       ? "bg-amber-50 text-amber-700" :
                         weekly.changeStatus === "STABLE"     ? "bg-gray-100 text-gray-500" :
-                        weekly.changeStatus === "FALL"       ? "bg-blue-100 text-blue-600" :
-                        "bg-indigo-100 text-indigo-600"
+                        weekly.changeStatus === "FALL"       ? "bg-brand-cream text-brand" :
+                        "bg-brand-cream text-brand"
                     }`}>
                         {{
                             SHARP_RISE: "급등 +5%↑",
@@ -264,26 +264,26 @@ function DetailPanel({ item, latest, weekly, onClose, marketType }) {
             {/* 주간 바 차트 */}
             {history.length > 0 ? (
                 <div className="overflow-visible">
-                    <h3 className="text-xs font-semibold text-gray-500 mb-3">📈 최근 7개 거래일 가격 추이</h3>
+                    <h3 className="text-caption font-bold text-gray-500 mb-3">📈 최근 7개 거래일 가격 추이</h3>
                     <div className="flex items-end gap-2 h-28 overflow-visible">
                         {history.map((d, i) => (
                             <div key={i} className="flex-1 flex flex-col items-center group relative">
-                                <div className="hidden group-hover:flex flex-col items-center absolute bottom-full mb-1 bg-gray-800 text-white text-[10px] rounded-lg px-2 py-1 z-10 whitespace-nowrap">
+                                <div className="hidden group-hover:flex flex-col items-center absolute bottom-full mb-1 bg-gray-800 text-white text-caption rounded-lg px-2 py-1 z-10 whitespace-nowrap">
                                     <span>{d.price?.toLocaleString()}원</span>
                                 </div>
                                 <div
                                     className={`w-full rounded-t-sm transition-colors ${
                                         i === history.length - 1
                                             ? isWholesale
-                                                ? "bg-blue-400 hover:bg-blue-500"
-                                                : "bg-green-400 hover:bg-green-500"
+                                                ? "bg-brand-olive hover:bg-brand-olive"
+                                                : "bg-brand-leaf hover:bg-brand"
                                             : isWholesale
-                                                ? "bg-blue-200 hover:bg-blue-300"
-                                                : "bg-green-200 hover:bg-green-300"
+                                                ? "bg-brand-olive/30 hover:bg-brand-olive/30"
+                                                : "bg-brand-cream hover:bg-brand-bright"
                                     }`}
                                     style={{ height: `${Math.max((d.price / max) * 96, 2)}px` }}
                                 />
-                                <span className="text-[9px] text-gray-300 mt-1">
+                                <span className="text-caption text-gray-500 mt-1">
                                     {d.date?.slice(5)}
                                 </span>
                             </div>
@@ -291,7 +291,7 @@ function DetailPanel({ item, latest, weekly, onClose, marketType }) {
                     </div>
                 </div>
             ) : (
-                <div className="flex items-center justify-center py-6 text-gray-300 text-sm">
+                <div className="flex items-center justify-center py-6 text-gray-500 text-body2">
                     주간 데이터가 없어요
                 </div>
             )}
@@ -323,14 +323,14 @@ function MarketPricePage() {
     };
 
     return (
-        <div className="max-w-screen-xl mx-auto p-4 sm:p-6 flex flex-col gap-5">
+        <div className="flex flex-col gap-4 lg:gap-6">
             {/* 헤더 */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <button onClick={() => navigate("/")} className="text-gray-400 hover:text-gray-600 text-sm">← 홈</button>
+                    <button onClick={() => navigate("/")} className="text-gray-500 hover:text-gray-600 text-body2">← 홈</button>
                     <div>
-                        <h1 className="text-lg font-bold text-gray-800">🏪 농산물 시세</h1>
-                        <p className="text-xs text-gray-400 mt-0.5">매일 오전 6시 자동 업데이트 · KAMIS 공공데이터 기준</p>
+                        <h1 className="text-sub1 font-bold text-gray-800">🏪 농산물 시세</h1>
+                        <p className="text-caption text-gray-500 mt-1">매일 오전 6시 자동 업데이트 · KAMIS 공공데이터 기준</p>
                     </div>
                 </div>
 
@@ -338,20 +338,20 @@ function MarketPricePage() {
                 <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
                     <button
                         onClick={() => handleTypeChange("RETAIL")}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        className={`px-3 py-2 rounded-lg text-caption font-bold transition-all ${
                             marketType === "RETAIL"
-                                ? "bg-white text-green-600 shadow-sm"
-                                : "text-gray-400 hover:text-gray-600"
+                                ? "bg-white text-brand shadow-sm"
+                                : "text-gray-500 hover:text-gray-600"
                         }`}
                     >
                         🛒 소매가
                     </button>
                     <button
                         onClick={() => handleTypeChange("WHOLESALE")}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        className={`px-3 py-2 rounded-lg text-caption font-bold transition-all ${
                             marketType === "WHOLESALE"
-                                ? "bg-white text-blue-600 shadow-sm"
-                                : "text-gray-400 hover:text-gray-600"
+                                ? "bg-white text-brand shadow-sm"
+                                : "text-gray-500 hover:text-gray-600"
                         }`}
                     >
                         🏭 도매가

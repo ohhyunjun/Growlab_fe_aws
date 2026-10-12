@@ -41,12 +41,12 @@ const CommentCreate = ({ articleId, onCommentAdded }) => {
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder="재배 노하우에 대해 궁금한 점이나 의견을 남겨주세요!"
-          className="w-full min-h-[100px] p-4 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-green-500/20 outline-none resize-none transition-all"
+          className="w-full min-h-[100px] p-4 bg-gray-50 border-none rounded-xl text-body2 focus:ring-2 focus:ring-brand-leaf/20 outline-none resize-none transition-all"
         />
         <div className="flex justify-end">
           <button
             onClick={handleSubmit}
-            className="bg-[#16a34a] text-white px-8 py-2.5 rounded-xl font-bold hover:bg-[#15803d] transition-all shadow-md shadow-green-100"
+            className="bg-brand text-white px-8 py-3 rounded-xl font-bold hover:bg-brand-deep transition-all shadow-md shadow-brand/10"
           >
             댓글 등록
           </button>

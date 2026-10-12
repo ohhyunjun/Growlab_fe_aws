@@ -102,15 +102,15 @@ const ArticleCreatePage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] p-4 sm:p-6 lg:p-10 font-sans">
-      <div className="max-w-4xl mx-auto bg-white rounded-[2rem] sm:rounded-[3rem] shadow-sm border border-gray-100 p-6 sm:p-10 lg:p-12">
+    <div className="font-sans">
+      <div className="max-w-col-8 mx-auto bg-white rounded-[2rem] sm:rounded-[3rem] shadow-sm border border-gray-100 p-6 sm:p-10 lg:p-12">
 
         <header className="mb-8 sm:mb-10">
-          <button onClick={() => navigate(-1)} className="text-gray-400 hover:text-green-600 text-sm font-bold mb-4 block">← 뒤로가기</button>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
+          <button onClick={() => navigate(-1)} className="text-gray-500 hover:text-brand text-body2 font-bold mb-4 block">← 뒤로가기</button>
+          <h2 className="text-h4 sm:text-h2 font-bold text-gray-900 ">
             {isEditMode ? "게시글 수정" : "새 게시글 작성"}
           </h2>
-          <p className="text-sm text-gray-500 mt-2 font-medium">
+          <p className="text-body2 text-gray-500 mt-2 font-medium">
             {isEditMode ? "내용을 자유롭게 수정해 보세요." : "GrowLab의 지식 창고에 당신의 노하우를 더해주세요."}
           </p>
         </header>
@@ -120,8 +120,8 @@ const ArticleCreatePage = () => {
           <div className="flex flex-wrap gap-2 sm:gap-3">
             {['재배 노하우', '자유 게시판', '질문/답변'].map((cat) => (
               <button key={cat} type="button" onClick={() => setCategory(cat)}
-                className={`px-4 sm:px-5 py-2 rounded-full text-xs font-bold transition-all ${
-                  category === cat ? 'bg-[#16a34a] text-white' : 'bg-gray-100 text-gray-400'
+                className={`px-4 sm:px-5 py-2 rounded-full text-caption font-bold transition-all ${
+                  category === cat ? 'bg-brand text-white' : 'bg-gray-100 text-gray-500'
                 }`}>{cat}</button>
             ))}
           </div>
@@ -131,12 +131,12 @@ const ArticleCreatePage = () => {
             <input
               type="text" placeholder="제목을 입력하세요" value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full text-xl sm:text-2xl font-bold border-b border-gray-100 py-3 sm:py-4 focus:border-green-500 outline-none transition-all"
+              className="w-full text-sub1 sm:text-h4 font-bold border-b border-gray-100 py-3 sm:py-4 focus:border-brand outline-none transition-all"
             />
 
             {/* 사진 첨부 */}
             <div className="flex flex-col gap-3 sm:gap-4">
-              <label className="w-fit cursor-pointer bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-600 px-4 py-2 rounded-xl text-xs transition-all flex items-center gap-2">
+              <label className="w-fit cursor-pointer bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-600 px-4 py-2 rounded-xl text-caption transition-all flex items-center gap-2">
                 📸 {isEditMode ? "사진 변경하기" : "사진 첨부하기"}
                 <input type="file" className="hidden" onChange={handleFileChange} accept="image/*" multiple />
               </label>
@@ -147,7 +147,7 @@ const ArticleCreatePage = () => {
                     <div key={index} className="relative w-28 h-28 sm:w-36 sm:h-36 lg:w-40 lg:h-40 rounded-xl sm:rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
                       <img src={url} alt={`미리보기 ${index}`} className="w-full h-full object-cover" />
                       <button type="button" onClick={() => handleRemoveFile(index)}
-                        className="absolute top-1 right-1 bg-black/50 text-white w-5 h-5 sm:w-6 sm:h-6 rounded-full text-xs hover:bg-black/70 flex items-center justify-center">✕</button>
+                        className="absolute top-1 right-1 bg-black/50 text-white w-5 h-5 sm:w-6 sm:h-6 rounded-full text-caption hover:bg-black/70 flex items-center justify-center">✕</button>
                     </div>
                   ))}
                 </div>
@@ -158,14 +158,14 @@ const ArticleCreatePage = () => {
             <textarea
               placeholder="내용을 입력하세요..." value={content}
               onChange={(e) => setContent(e.target.value)}
-              className="w-full min-h-[250px] sm:min-h-[350px] py-3 sm:py-4 outline-none resize-none text-gray-700 leading-relaxed text-base sm:text-lg"
+              className="w-full min-h-[250px] sm:min-h-[350px] py-3 sm:py-4 outline-none resize-none text-gray-700  text-body1 sm:text-sub1"
             />
           </div>
 
           {/* 버튼 */}
           <div className="flex justify-end gap-2 sm:gap-3 pt-4 sm:pt-6 border-t border-gray-50">
-            <button type="button" onClick={() => navigate(-1)} className="px-5 sm:px-8 py-3 text-gray-400 font-bold hover:text-gray-600 text-sm sm:text-base">취소</button>
-            <button type="submit" className="px-8 sm:px-12 py-3 bg-[#16a34a] text-white rounded-xl sm:rounded-2xl font-bold shadow-lg shadow-green-100 hover:bg-[#15803d] transition-all text-sm sm:text-base">
+            <button type="button" onClick={() => navigate(-1)} className="px-5 sm:px-8 py-3 text-gray-500 font-bold hover:text-gray-600 text-body2 sm:text-body1">취소</button>
+            <button type="submit" className="px-8 sm:px-12 py-3 bg-brand text-white rounded-xl sm:rounded-2xl font-bold shadow-lg shadow-brand/10 hover:bg-brand-deep transition-all text-body2 sm:text-body1">
               {isEditMode ? "수정 완료" : "등록하기"}
             </button>
           </div>

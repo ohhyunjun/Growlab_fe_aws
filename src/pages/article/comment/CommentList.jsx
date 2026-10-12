@@ -43,15 +43,15 @@ const CommentList = ({ articleId }) => {
   };
 
   if (loading) {
-    return <div className="py-10 text-center text-gray-400">댓글을 불러오는 중...</div>;
+    return <div className="py-10 text-center text-gray-500">댓글을 불러오는 중...</div>;
   }
 
   return (
     <div className="mt-12 border-t border-gray-100 pt-10">
       {/* 댓글 헤더 */}
       <div className="flex items-center gap-2 mb-8">
-        <h3 className="text-xl font-bold text-gray-900">댓글</h3>
-        <span className="bg-green-100 text-green-700 text-sm font-bold px-3 py-0.5 rounded-full">
+        <h3 className="text-sub1 font-bold text-gray-900">댓글</h3>
+        <span className="bg-brand-cream text-brand text-body2 font-bold px-3 py-1 rounded-full">
           {comments.length}
         </span>
       </div>
@@ -67,7 +67,7 @@ const CommentList = ({ articleId }) => {
             />
           ))
         ) : (
-          <div className="py-12 text-center text-gray-400 text-sm bg-gray-50/50 rounded-3xl border border-dashed border-gray-200">
+          <div className="py-12 text-center text-gray-500 text-body2 bg-gray-50/50 rounded-3xl border border-dashed border-gray-200">
             아직 등록된 댓글이 없습니다. 첫 마디를 남겨보세요!
           </div>
         )}
@@ -81,8 +81,8 @@ const CommentList = ({ articleId }) => {
         />
       ) : (
         <div className="p-8 bg-gray-50 rounded-3xl text-center border border-gray-100">
-          <p className="text-gray-500 text-sm">
-            댓글 작성을 위해 <span className="text-green-600 font-bold hover:underline cursor-pointer">로그인</span>이 필요합니다.
+          <p className="text-gray-500 text-body2">
+            댓글 작성을 위해 <span className="text-brand font-bold hover:underline cursor-pointer">로그인</span>이 필요합니다.
           </p>
         </div>
       )}

@@ -12,16 +12,13 @@ const ArticleListPage = () => {
   const [showSidebar, setShowSidebar] = useState(false); // ✅ 모바일 사이드바 토글
   const postsPerPage = 10;
 
-  useEffect(() => { fetchPosts(); }, []);
-  useEffect(() => { setCurrentPage(1); }, [currentCategory]);
-
-  const fetchPosts = async () => {
-    const token = localStorage.getItem("token");
-    try {
-      const response = await getArticlesApi(token);
-      setPosts(response.data?.content ?? []);
-    } catch (error) { console.error("데이터 로딩 실패:", error); }
-  };
+  useEffect(() => {
+    let active = true;
+    getArticlesApi(localStorage.getItem("token"))
+      .then(response => { if (active) setPosts(response.data?.content ?? []); })
+      .catch(error => console.error("데이터 로딩 실패:", error));
+    return () => { active = false; };
+  }, []);
 
   const getFormattedImageUrl = (post) => {
     let rawUrl = post.imageUrl;
@@ -46,7 +43,7 @@ const ArticleListPage = () => {
   const totalPages = Math.ceil(filteredPosts.length / postsPerPage);
   const popularPosts = [...posts].sort((a, b) => (b.likesCount || 0) - (a.likesCount || 0)).slice(0, 3);
 
-  const SidebarContent = () => (
+  const renderSidebarContent = () => (
     <>
       <div className="relative mb-6 mt-2">
         <input
@@ -54,20 +51,20 @@ const ArticleListPage = () => {
           placeholder="게시글 이름으로 검색..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full bg-gray-50 rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-green-500 transition-all"
+          className="w-full bg-gray-50 rounded-xl py-3 px-4 text-body2 outline-none focus:ring-2 focus:ring-brand-leaf transition-all"
         />
       </div>
       <nav className="space-y-2">
         {['전체', '재배 노하우', '자유 게시판', '질문/답변'].map((cat) => (
           <button
             key={cat}
-            onClick={() => { setCurrentCategory(cat); setShowSidebar(false); }}
+            onClick={() => { setCurrentCategory(cat); setCurrentPage(1); setShowSidebar(false); }}
             className={`w-full flex justify-between items-center px-4 py-3 rounded-xl transition-all ${
-              currentCategory === cat ? 'bg-green-50 text-green-600 font-bold' : 'text-gray-500 hover:bg-gray-50'
+              currentCategory === cat ? 'bg-brand-cream text-brand font-bold' : 'text-gray-500 hover:bg-gray-50'
             }`}
           >
             <span>{cat}</span>
-            <span className="text-[10px] bg-white px-2 py-1 rounded-md border border-gray-100">
+            <span className="text-caption bg-white px-2 py-1 rounded-md border border-gray-100">
               {cat === '전체' ? posts.length : posts.filter(p => p.category === cat).length}개
             </span>
           </button>
@@ -75,14 +72,14 @@ const ArticleListPage = () => {
       </nav>
       <button
         onClick={() => { navigate('/articles/write'); setShowSidebar(false); }}
-        className="w-full mt-8 bg-[#16a34a] text-white py-4 rounded-2xl font-bold shadow-lg shadow-green-100 transition-transform active:scale-95"
+        className="w-full mt-8 bg-brand text-white py-4 rounded-2xl font-bold shadow-lg shadow-brand/10 transition-transform active:scale-95"
       >+ 글쓰기</button>
     </>
   );
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] p-4 sm:p-6 lg:p-10 font-sans">
-      <div className="max-w-7xl mx-auto flex gap-6 lg:gap-8">
+    <div className="font-sans">
+      <div className="flex gap-4 lg:gap-6">
 
         {/* ✅ 모바일 사이드바 오버레이 */}
         {showSidebar && (
@@ -91,16 +88,16 @@ const ArticleListPage = () => {
             <div className="absolute left-0 top-0 bottom-0 w-72 bg-white rounded-r-3xl p-6 shadow-xl z-50">
               <div className="flex justify-between items-center mb-6">
                 <span className="font-bold text-gray-800">카테고리</span>
-                <button onClick={() => setShowSidebar(false)} className="text-gray-400 text-xl">✕</button>
+                <button onClick={() => setShowSidebar(false)} className="text-gray-500 text-sub1">✕</button>
               </div>
-              <SidebarContent />
+              {renderSidebarContent()}
             </div>
           </div>
         )}
 
         {/* ✅ 데스크탑 사이드바 */}
         <aside className="hidden lg:block w-64 bg-white rounded-[2rem] p-8 shadow-sm h-fit border border-gray-100 sticky top-10">
-          <SidebarContent />
+          {renderSidebarContent()}
         </aside>
 
         {/* 메인 */}
@@ -110,16 +107,16 @@ const ArticleListPage = () => {
           <div className="flex items-center justify-between mb-6 lg:hidden">
             <button
               onClick={() => setShowSidebar(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-xl text-sm text-gray-600 font-medium border border-gray-200"
+              className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-xl text-body2 text-gray-600 font-medium border border-gray-200"
             >☰ {currentCategory}</button>
             <button
               onClick={() => navigate('/articles/write')}
-              className="px-4 py-2 bg-[#16a34a] text-white rounded-xl text-sm font-bold"
+              className="px-4 py-2 bg-brand text-white rounded-xl text-body2 font-bold"
             >+ 글쓰기</button>
           </div>
 
           <header className="mb-8 lg:mb-10 hidden lg:block">
-            <h1 className="text-3xl lg:text-4xl font-extrabold text-gray-900 mb-2">{currentCategory}</h1>
+            <h1 className="text-h2 lg:text-h1 font-bold text-gray-900 mb-2">{currentCategory}</h1>
             <p className="text-gray-500">
               {currentCategory === '전체' ? "GrowLab의 모든 지식을 한눈에 확인하세요." : `${currentCategory}에 대한 정보를 공유하고 소통하세요.`}
             </p>
@@ -128,8 +125,8 @@ const ArticleListPage = () => {
           {/* 인기 게시글 */}
           {currentCategory === '전체' && popularPosts.length > 0 && (
             <section className="mb-10 lg:mb-16">
-              <h2 className="flex items-center gap-2 text-lg lg:text-xl font-bold mb-4 lg:mb-6 text-gray-800">
-                <span className="text-orange-500">🔥</span> 인기 게시글
+              <h2 className="flex items-center gap-2 text-sub1 lg:text-sub1 font-bold mb-4 lg:mb-6 text-gray-800">
+                <span className="text-amber-700">🔥</span> 인기 게시글
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
                 {popularPosts.map((post) => {
@@ -145,16 +142,16 @@ const ArticleListPage = () => {
                           <img src={imgUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform" alt="popular"
                             onError={(e) => { e.target.onerror = null; e.target.src = "https://via.placeholder.com/300x200?text=No+Preview"; }} />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs font-medium">No Image</div>
+                          <div className="w-full h-full flex items-center justify-center text-gray-500 text-caption font-medium">No Image</div>
                         )}
                       </div>
-                      <span className="inline-block px-3 py-1 bg-green-50 text-green-600 text-[10px] font-bold rounded-full mb-2">{post.category}</span>
-                      <h3 className="font-bold text-gray-800 text-sm line-clamp-2 mb-3 group-hover:text-green-600">{post.title}</h3>
-                      <div className="flex items-center justify-between text-[10px] text-gray-400 font-medium">
+                      <span className="inline-block px-3 py-1 bg-brand-cream text-brand text-caption font-bold rounded-full mb-2">{post.category}</span>
+                      <h3 className="font-bold text-gray-800 text-body2 line-clamp-2 mb-3 group-hover:text-brand">{post.title}</h3>
+                      <div className="flex items-center justify-between text-caption text-gray-500 font-medium">
                         <span>👤 {post.authorUsername}</span>
                         <div className="flex gap-2">
                           <span>👁️ {post.viewCount || 0}</span>
-                          <span className="text-orange-500">❤️ {post.likesCount || 0}</span>
+                          <span className="text-amber-700">❤️ {post.likesCount || 0}</span>
                         </div>
                       </div>
                     </div>
@@ -167,19 +164,19 @@ const ArticleListPage = () => {
           {/* 게시글 리스트 */}
           <section>
             {/* 데스크탑 헤더 */}
-            <div className="hidden sm:flex items-center justify-between px-4 lg:px-6 pb-4 border-b border-gray-100 text-sm font-bold text-gray-400">
+            <div className="hidden sm:flex items-center justify-between px-4 lg:px-6 pb-4 border-b border-gray-100 text-body2 font-bold text-gray-500">
               <span className="w-[50%]">제목</span>
               <div className="flex-1 grid grid-cols-4 text-center">
                 <span>작성자</span>
                 <span>작성일</span>
                 <span>조회수</span>
-                <span className="text-green-600">좋아요</span>
+                <span className="text-brand">좋아요</span>
               </div>
             </div>
 
             <div className="divide-y divide-gray-50 mb-8">
               {currentPosts.length === 0 ? (
-                <div className="py-16 text-center text-gray-400 text-sm">게시글이 없어요</div>
+                <div className="py-16 text-center text-gray-500 text-body2">게시글이 없어요</div>
               ) : currentPosts.map((post) => (
                 <div
                   key={post.id}
@@ -189,25 +186,25 @@ const ArticleListPage = () => {
                   {/* 모바일 카드형 */}
                   <div className="sm:hidden px-2 py-4">
                     <div className="flex items-start gap-2 mb-1">
-                      <span className="text-base opacity-70 mt-0.5">🌱</span>
-                      <span className="font-bold text-gray-700 group-hover:text-green-600 text-sm line-clamp-2">{post.title}</span>
+                      <span className="text-body1 opacity-70 mt-1">🌱</span>
+                      <span className="font-bold text-gray-700 group-hover:text-brand text-body2 line-clamp-2">{post.title}</span>
                     </div>
-                    <div className="flex gap-3 text-xs text-gray-400 mt-1 ml-6">
+                    <div className="flex gap-3 text-caption text-gray-500 mt-1 ml-6">
                       <span>{post.authorUsername}</span>
                       <span>{post.createdAt?.split(' ')[0]}</span>
                       <span>👁️ {post.viewCount || 0}</span>
-                      <span className="text-orange-500">❤️ {post.likesCount || 0}</span>
+                      <span className="text-amber-700">❤️ {post.likesCount || 0}</span>
                     </div>
                   </div>
                   {/* 데스크탑 행형 */}
                   <div className="hidden sm:flex items-center justify-between px-4 lg:px-6 py-5">
                     <div className="w-[50%] flex items-center gap-3">
-                      <span className="text-lg opacity-70">🌱</span>
-                      <span className="font-bold text-gray-700 group-hover:text-green-600 truncate">{post.title}</span>
+                      <span className="text-sub1 opacity-70">🌱</span>
+                      <span className="font-bold text-gray-700 group-hover:text-brand truncate">{post.title}</span>
                     </div>
-                    <div className="flex-1 grid grid-cols-4 text-center text-sm text-gray-500 items-center">
+                    <div className="flex-1 grid grid-cols-4 text-center text-body2 text-gray-500 items-center">
                       <span>{post.authorUsername}</span>
-                      <span className="text-gray-400">{post.createdAt?.split(' ')[0]}</span>
+                      <span className="text-gray-500">{post.createdAt?.split(' ')[0]}</span>
                       <span>{post.viewCount || 0}</span>
                       <span className="font-bold text-gray-900">{post.likesCount || 0}</span>
                     </div>
@@ -223,8 +220,8 @@ const ArticleListPage = () => {
                   <button
                     key={page}
                     onClick={() => setCurrentPage(page)}
-                    className={`w-8 h-8 rounded-lg text-sm font-bold transition-colors ${
-                      currentPage === page ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    className={`w-8 h-8 rounded-lg text-body2 font-bold transition-colors ${
+                      currentPage === page ? 'bg-brand text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                     }`}
                   >{page}</button>
                 ))}
