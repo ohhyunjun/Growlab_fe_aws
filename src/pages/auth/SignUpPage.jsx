@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { signupApi, sendEmailCodeApi, verifyEmailCodeApi } from "../../api/authApi";
+import AuthLayout from "../../components/layouts/AuthLayout";
+import { AuthField, AuthInput, AuthInputRow, AuthActionButton, AuthPrimaryButton, StatusChip } from "../../components/auth/AuthUI";
+import iconBack from "../../assets/icon-back.svg";
 
 function SignUpPage() {
     const navigate = useNavigate();
@@ -15,7 +18,7 @@ function SignUpPage() {
     const [sendLoading, setSendLoading] = useState(false);
     const [verifyLoading, setVerifyLoading] = useState(false);
     const [emailError, setEmailError] = useState("");
-    const [emailMessage, setEmailMessage] = useState("");
+    const [, setEmailMessage] = useState("");
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -106,145 +109,155 @@ function SignUpPage() {
         }
     };
 
-    return (
-        <div className="min-h-[80vh] flex items-center justify-center">
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm w-full max-w-md p-8">
-                {/* 로고 */}
-                <div className="text-center mb-8">
-                    <div className="text-3xl mb-2">🌱</div>
-                    <h1 className="text-2xl font-bold text-gray-800">GrowLab 회원가입</h1>
-                    <p className="text-sm text-gray-400 mt-1">스마트팜을 시작해보세요</p>
-                </div>
+    // 시도 횟수 초과 여부 (handleVerifyCode의 코드 초기화 조건과 동일)
+    const codeLocked = emailError.includes("초과") || emailError.includes("다시 받아주세요");
 
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                    {error && (
-                        <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2">
-                            {error}
-                        </div>
-                    )}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">아이디</label>
-                        <input
+    return (
+        <AuthLayout wide top={80}>
+            {/* 제목: PC/H1/Bold, 뒤로가기 아이콘 32 + 간격 16 */}
+            <div className="flex items-center gap-4 lg:-ml-12">
+                <Link to="/login" aria-label="로그인으로 돌아가기" className="shrink-0">
+                    <img src={iconBack} alt="" width="32" height="32" />
+                </Link>
+                <h1 className="text-h2 font-bold text-gray-950">회원가입</h1>
+            </div>
+            <p className="mt-1 text-h4 font-normal text-gray-600">Grow Lab 과 함께 스마트팜을 시작해보세요!</p>
+
+            <form onSubmit={handleSubmit} className="mt-8">
+                <div className="flex flex-col gap-5">
+                    <AuthField size="md" label="아이디" htmlFor="username" hint="4~20자 이내로 입력해주세요">
+                        <AuthInput
+                            size="md"
+                            id="username"
                             type="text"
                             name="username"
                             value={form.username}
                             onChange={handleChange}
                             placeholder="아이디를 입력하세요"
+                            autoComplete="username"
                             required
-                            className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                         />
-                        <p className="text-xs text-gray-400 mt-1">4~20자 이내</p>
-                    </div>
+                    </AuthField>
 
-                    {/* ✅ 이메일 + 인증코드 받기 */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">이메일</label>
-                        <div className="flex gap-2">
-                            <input
+                    <AuthField
+                        size="md"
+                        label="이메일"
+                        htmlFor="email"
+                        hint="‘@’ 을 포함해 입력해주세요"
+                        error={!codeSent ? emailError : ""}
+                    >
+                        <AuthInputRow>
+                            <AuthInput
+                                size="md"
+                                id="email"
                                 type="email"
                                 name="email"
                                 value={form.email}
                                 onChange={handleChange}
                                 placeholder="이메일을 입력하세요"
+                                autoComplete="email"
                                 required
                                 disabled={emailVerified}
-                                className="flex-1 border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 disabled:bg-gray-50 disabled:text-gray-400"
                             />
-                            <button
-                                type="button"
+                            <AuthActionButton
+                                size="md"
                                 onClick={handleSendCode}
-                                disabled={sendLoading || emailVerified || !form.email.trim()}
-                                className="flex-shrink-0 px-4 py-2.5 text-xs font-medium rounded-lg border border-green-200 text-green-600 hover:bg-green-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors whitespace-nowrap"
+                                disabled={!form.email.trim() || sendLoading || emailVerified}
                             >
-                                {emailVerified
-                                    ? "인증완료"
-                                    : sendLoading
-                                        ? "발송 중..."
-                                        : codeSent ? "재발송" : "인증코드 받기"}
-                            </button>
-                        </div>
-                        <p className="text-xs text-gray-400 mt-1">'@' 포함 필수입력</p>
-                    </div>
+                                {sendLoading ? "발송 중..." : codeSent ? "재발송 하기" : "인증번호 받기"}
+                            </AuthActionButton>
+                        </AuthInputRow>
+                    </AuthField>
 
-                    {/* ✅ 인증코드 입력 - 발송했고 아직 인증 안 됐을 때만 노출 */}
-                    {codeSent && !emailVerified && (
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">인증코드</label>
-                            <div className="flex gap-2">
-                                <input
+                    {/* 인증번호 - 발송 후 노출 (인증 완료 후에도 결과 표시) */}
+                    {codeSent && (
+                        <AuthField
+                            size="md"
+                            label="인증번호"
+                            htmlFor="code"
+                            hint="인증번호가 발송되었습니다. 메일함 (스팸함 포함) 을 확인해주세요. 5분 이내에 입력해 주세요."
+                            status={
+                                emailVerified ? (
+                                    <StatusChip type="success" className="lg:w-[calc(100%-220px)]">인증이 완료되었습니다.</StatusChip>
+                                ) : emailError ? (
+                                    codeLocked ? (
+                                        <StatusChip type="error" full>{emailError}</StatusChip>
+                                    ) : (
+                                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                            <StatusChip type="error">{emailError}</StatusChip>
+                                            <span className="text-body1 text-gray-400">메일함(스팸) 을 확인해주세요. 5분 이내에 입력해 주세요.</span>
+                                        </div>
+                                    )
+                                ) : null
+                            }
+                        >
+                            <AuthInputRow>
+                                <AuthInput
+                                    size="md"
+                                    id="code"
                                     type="text"
+                                    inputMode="numeric"
                                     value={code}
                                     onChange={(e) => setCode(e.target.value)}
                                     placeholder="6자리 숫자를 입력하세요"
                                     maxLength={6}
-                                    className="flex-1 border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                                    autoComplete="one-time-code"
+                                    disabled={emailVerified}
                                 />
-                                <button
-                                    type="button"
+                                <AuthActionButton
+                                    size="md"
+                                    done={emailVerified}
                                     onClick={handleVerifyCode}
-                                    disabled={verifyLoading || !code.trim()}
-                                    className="flex-shrink-0 px-4 py-2.5 text-xs font-medium rounded-lg bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white transition-colors whitespace-nowrap"
+                                    disabled={emailVerified || verifyLoading || !code.trim()}
                                 >
-                                    {verifyLoading ? "확인 중..." : "인증확인"}
-                                </button>
-                            </div>
-                            <p className="text-xs text-gray-400 mt-1">메일함(스팸함 포함)을 확인해주세요. 5분 이내에 입력해야 해요.</p>
-                        </div>
+                                    {emailVerified ? "인증 완료" : verifyLoading ? "확인 중..." : "인증 확인"}
+                                </AuthActionButton>
+                            </AuthInputRow>
+                        </AuthField>
                     )}
 
-                    {emailError && (
-                        <div className="bg-red-50 text-red-500 text-xs rounded-lg px-3 py-2 -mt-2">{emailError}</div>
-                    )}
-                    {emailMessage && !emailError && (
-                        <div className={`text-xs rounded-lg px-3 py-2 -mt-2 ${
-                            emailVerified ? "bg-green-50 text-green-600" : "bg-blue-50 text-blue-500"
-                        }`}>
-                            {emailVerified ? "✓ " : ""}{emailMessage}
-                        </div>
-                    )}
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
-                        <input
+                    <AuthField size="md" label="비밀번호" htmlFor="password" hint="8~20자 이내로 입력해주세요">
+                        <AuthInput
+                            size="md"
+                            id="password"
                             type="password"
                             name="password"
                             value={form.password}
                             onChange={handleChange}
                             placeholder="비밀번호를 입력하세요"
+                            autoComplete="new-password"
                             required
-                            className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                         />
-                        <p className="text-xs text-gray-400 mt-1">8~20자 이내</p>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">비밀번호 확인</label>
-                        <input
+                    </AuthField>
+
+                    <AuthField size="md" label="비밀번호 확인" htmlFor="confirmPassword">
+                        <AuthInput
+                            size="md"
+                            id="confirmPassword"
                             type="password"
                             name="confirmPassword"
                             value={form.confirmPassword}
                             onChange={handleChange}
                             placeholder="비밀번호를 다시 입력하세요"
+                            autoComplete="new-password"
                             required
-                            className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                         />
-                    </div>
-                    <button
-                        type="submit"
-                        disabled={loading || !emailVerified}
-                        className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors disabled:opacity-50"
-                    >
-                        {loading ? "가입 중..." : !emailVerified ? "이메일 인증을 완료해주세요" : "회원가입"}
-                    </button>
-                </form>
+                    </AuthField>
+                </div>
 
-                <p className="text-center text-sm text-gray-400 mt-6">
-                    이미 계정이 있으신가요?{" "}
-                    <Link to="/login" className="text-green-600 font-medium hover:underline">
-                        로그인
-                    </Link>
-                </p>
+                {error && <StatusChip type="error" full className="mt-5">{error}</StatusChip>}
+
+                {/* Figma: 인증번호 칸이 생기면 1080 안에 맞추려고 간격을 좁힘 (44→32, 40→20) */}
+                <AuthPrimaryButton size="md" type="submit" disabled={loading || !emailVerified} className={codeSent ? "mt-8" : "mt-11"}>
+                    {loading ? "가입 중..." : "회원가입 하기"}
+                </AuthPrimaryButton>
+            </form>
+
+            <div className={`${codeSent ? "mt-5" : "mt-10"} flex items-center justify-center gap-3 text-sub1 font-medium`}>
+                <span className="text-gray-400">이미 계정이 있으신가요?</span>
+                <Link to="/login" className="w-20 text-brand hover:underline">로그인</Link>
             </div>
-        </div>
+        </AuthLayout>
     );
 }
 

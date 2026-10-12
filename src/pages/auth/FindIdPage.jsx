@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import AuthLayout from "../../components/layouts/AuthLayout";
+import { AuthHeading, AuthField, AuthInput, AuthInputRow, AuthActionButton, AuthBoxLink } from "../../components/auth/AuthUI";
 import { sendFindIdCodeApi, verifyEmailCodeApi, findIdApi } from "../../api/authApi";
 
 function FindIdPage() {
@@ -92,104 +93,77 @@ function FindIdPage() {
     };
 
     return (
-        <div className="min-h-[80vh] flex items-center justify-center">
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm w-full max-w-md p-8">
-                <div className="text-center mb-8">
-                    <div className="text-3xl mb-2">🔍</div>
-                    <h1 className="text-2xl font-bold text-gray-800">아이디 찾기</h1>
-                    <p className="text-sm text-gray-400 mt-1">가입한 이메일로 본인 확인 후 아이디를 알려드려요</p>
+        <AuthLayout wide>
+            <AuthHeading title="아이디 찾기" subtitle="가입하신 이메일로 본인 확인 후 아이디를 알려드려요" />
+
+            {maskedUsername ? (
+                <div className="mt-12 flex flex-col gap-9">
+                    <div className="rounded bg-white px-8 py-10 text-center">
+                        <p className="text-sub1 font-medium text-gray-600">회원님의 아이디는</p>
+                        <p className="mt-2 text-h2 font-bold text-brand">{maskedUsername}</p>
+                        <p className="mt-2 text-body2 text-gray-500">보안을 위해 일부만 표시돼요</p>
+                    </div>
+                    <AuthBoxLink to="/login" variant="primary">로그인하러 가기</AuthBoxLink>
                 </div>
+            ) : (
+                <div className="mt-12 flex flex-col gap-7">
+                    <AuthField
+                        label="가입한 이메일"
+                        htmlFor="email"
+                        error={!codeSent || emailVerified ? error : ""}
+                        hint={!codeSent && message}
+                    >
+                        <AuthInputRow>
+                            <AuthInput
+                                id="email"
+                                type="email"
+                                value={email}
+                                onChange={handleEmailChange}
+                                placeholder="이메일을 입력하세요"
+                                autoComplete="email"
+                                disabled={emailVerified}
+                            />
+                            <AuthActionButton
+                                onClick={handleSendCode}
+                                disabled={!email.trim() || sendLoading || emailVerified}
+                            >
+                                {emailVerified ? "인증완료" : sendLoading ? "발송 중..." : codeSent ? "재발송" : "인증번호 받기"}
+                            </AuthActionButton>
+                        </AuthInputRow>
+                    </AuthField>
 
-                {maskedUsername ? (
-                    <div className="flex flex-col gap-4">
-                        <div className="bg-green-50 border border-green-100 rounded-xl p-6 text-center">
-                            <p className="text-xs text-gray-400 mb-2">회원님의 아이디는</p>
-                            <p className="text-2xl font-bold text-green-700 tracking-wide">{maskedUsername}</p>
-                            <p className="text-xs text-gray-400 mt-2">보안을 위해 일부만 표시돼요</p>
-                        </div>
-                        <Link
-                            to="/login"
-                            className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors text-center"
+                    {codeSent && !emailVerified && (
+                        <AuthField
+                            label="인증번호"
+                            htmlFor="code"
+                            error={error}
+                            hint={message || "5분 이내에 입력해야 해요."}
                         >
-                            로그인하러 가기
-                        </Link>
-                    </div>
-                ) : (
-                    <div className="flex flex-col gap-4">
-                        {error && (
-                            <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2">{error}</div>
-                        )}
-                        {message && !error && (
-                            <div className={`text-xs rounded-lg px-3 py-2 ${
-                                emailVerified ? "bg-green-50 text-green-600" : "bg-blue-50 text-blue-500"
-                            }`}>
-                                {emailVerified ? "✓ " : ""}{message}
-                            </div>
-                        )}
-
-                        {/* 이메일 + 인증코드 받기 */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">가입한 이메일</label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="email"
-                                    value={email}
-                                    onChange={handleEmailChange}
-                                    placeholder="이메일을 입력하세요"
-                                    required
-                                    disabled={emailVerified}
-                                    className="flex-1 border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 disabled:bg-gray-50 disabled:text-gray-400"
+                            <AuthInputRow>
+                                <AuthInput
+                                    id="code"
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={code}
+                                    onChange={(e) => setCode(e.target.value)}
+                                    placeholder="6자리 숫자를 입력하세요"
+                                    maxLength={6}
+                                    autoComplete="one-time-code"
                                 />
-                                <button
-                                    type="button"
-                                    onClick={handleSendCode}
-                                    disabled={sendLoading || emailVerified || !email.trim()}
-                                    className="flex-shrink-0 px-4 py-2.5 text-xs font-medium rounded-lg border border-green-200 text-green-600 hover:bg-green-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors whitespace-nowrap"
+                                <AuthActionButton
+                                    onClick={handleVerifyCode}
+                                    disabled={!code.trim() || verifyLoading || findLoading}
                                 >
-                                    {emailVerified
-                                        ? "인증완료"
-                                        : sendLoading
-                                            ? "발송 중..."
-                                            : codeSent ? "재발송" : "인증코드 받기"}
-                                </button>
-                            </div>
-                        </div>
+                                    {verifyLoading || findLoading ? "확인 중..." : "인증확인"}
+                                </AuthActionButton>
+                            </AuthInputRow>
+                        </AuthField>
+                    )}
+                </div>
+            )}
 
-                        {/* 인증코드 입력 */}
-                        {codeSent && !emailVerified && (
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">인증코드</label>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={code}
-                                        onChange={(e) => setCode(e.target.value)}
-                                        placeholder="6자리 숫자를 입력하세요"
-                                        maxLength={6}
-                                        className="flex-1 border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={handleVerifyCode}
-                                        disabled={verifyLoading || findLoading || !code.trim()}
-                                        className="flex-shrink-0 px-4 py-2.5 text-xs font-medium rounded-lg bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white transition-colors whitespace-nowrap"
-                                    >
-                                        {verifyLoading || findLoading ? "확인 중..." : "인증확인"}
-                                    </button>
-                                </div>
-                                <p className="text-xs text-gray-400 mt-1">5분 이내에 입력해야 해요.</p>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                <p className="text-center text-sm text-gray-400 mt-6">
-                    <Link to="/login" className="text-green-600 font-medium hover:underline">
-                        로그인으로 돌아가기
-                    </Link>
-                </p>
-            </div>
-        </div>
+            {!maskedUsername && <AuthBoxLink to="/login" className="mt-9">로그인으로 돌아가기</AuthBoxLink>}
+        </AuthLayout>
     );
 }
 

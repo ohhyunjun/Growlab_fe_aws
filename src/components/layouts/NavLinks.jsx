@@ -13,7 +13,7 @@ function NavLinks({ onClick }) {
         if (onClick) onClick();
     };
 
-    const baseStyle = "px-4 py-2 text-sm font-medium text-gray-600 hover:text-green-600 transition-colors";
+    const baseStyle = "px-4 py-2 text-body2 font-medium text-gray-600 hover:text-brand transition-colors";
 
     return (
         <>

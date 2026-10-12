@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import AuthLayout from "../../components/layouts/AuthLayout";
+import { AuthHeading, AuthField, AuthInput, AuthInputRow, AuthActionButton, AuthPrimaryButton, AuthBoxLink } from "../../components/auth/AuthUI";
 import { sendPasswordResetCodeApi, verifyEmailCodeApi, resetPasswordApi } from "../../api/authApi";
 
 function ForgotPasswordPage() {
-    const navigate = useNavigate();
-
     const [email, setEmail] = useState("");
     const [code, setCode] = useState("");
     const [newPassword, setNewPassword] = useState("");
@@ -110,142 +109,105 @@ function ForgotPasswordPage() {
 
     if (done) {
         return (
-            <div className="min-h-[80vh] flex items-center justify-center">
-                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm w-full max-w-md p-8 text-center">
-                    <div className="text-4xl mb-4">✅</div>
-                    <h1 className="text-xl font-bold text-gray-800 mb-2">비밀번호가 재설정되었어요</h1>
-                    <p className="text-sm text-gray-400 mb-6">새 비밀번호로 다시 로그인해주세요.</p>
-                    <button
-                        onClick={() => navigate("/login")}
-                        className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors"
-                    >
-                        로그인하러 가기
-                    </button>
-                </div>
-            </div>
+            <AuthLayout wide>
+                <AuthHeading title="비밀번호가 재설정되었어요" subtitle="새 비밀번호로 다시 로그인해주세요" />
+                <AuthBoxLink to="/login" variant="primary" className="mt-12">로그인하러 가기</AuthBoxLink>
+            </AuthLayout>
         );
     }
 
     return (
-        <div className="min-h-[80vh] flex items-center justify-center">
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm w-full max-w-md p-8">
-                <div className="text-center mb-8">
-                    <div className="text-3xl mb-2">🔑</div>
-                    <h1 className="text-2xl font-bold text-gray-800">비밀번호 찾기</h1>
-                    <p className="text-sm text-gray-400 mt-1">가입한 이메일로 본인 확인 후 재설정해요</p>
-                </div>
+        <AuthLayout wide>
+            <AuthHeading title="비밀번호 찾기" subtitle="가입하신 이메일로 본인 확인 후 비밀번호를 재설정해요" />
 
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                    {error && (
-                        <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2">{error}</div>
-                    )}
-                    {message && !error && (
-                        <div className={`text-xs rounded-lg px-3 py-2 ${
-                            emailVerified ? "bg-green-50 text-green-600" : "bg-blue-50 text-blue-500"
-                        }`}>
-                            {emailVerified ? "✓ " : ""}{message}
-                        </div>
-                    )}
+            <form onSubmit={handleSubmit} className="mt-12 flex flex-col gap-7">
+                <AuthField
+                    label="가입한 이메일"
+                    htmlFor="email"
+                    error={!codeSent && !emailVerified ? error : ""}
+                    hint={emailVerified ? "✓ 이메일 인증이 완료되었어요" : !codeSent && message}
+                >
+                    <AuthInputRow>
+                        <AuthInput
+                            id="email"
+                            type="email"
+                            value={email}
+                            onChange={handleEmailChange}
+                            placeholder="이메일을 입력하세요"
+                            autoComplete="email"
+                            disabled={emailVerified}
+                        />
+                        <AuthActionButton
+                            onClick={handleSendCode}
+                            disabled={!email.trim() || sendLoading || emailVerified}
+                        >
+                            {emailVerified ? "인증완료" : sendLoading ? "발송 중..." : codeSent ? "재발송" : "인증번호 받기"}
+                        </AuthActionButton>
+                    </AuthInputRow>
+                </AuthField>
 
-                    {/* 이메일 + 인증코드 받기 */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">가입한 이메일</label>
-                        <div className="flex gap-2">
-                            <input
-                                type="email"
-                                value={email}
-                                onChange={handleEmailChange}
-                                placeholder="이메일을 입력하세요"
-                                required
-                                disabled={emailVerified}
-                                className="flex-1 border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 disabled:bg-gray-50 disabled:text-gray-400"
-                            />
-                            <button
-                                type="button"
-                                onClick={handleSendCode}
-                                disabled={sendLoading || emailVerified || !email.trim()}
-                                className="flex-shrink-0 px-4 py-2.5 text-xs font-medium rounded-lg border border-green-200 text-green-600 hover:bg-green-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors whitespace-nowrap"
-                            >
-                                {emailVerified
-                                    ? "인증완료"
-                                    : sendLoading
-                                        ? "발송 중..."
-                                        : codeSent ? "재발송" : "인증코드 받기"}
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* 인증코드 입력 */}
-                    {codeSent && !emailVerified && (
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">인증코드</label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={code}
-                                    onChange={(e) => setCode(e.target.value)}
-                                    placeholder="6자리 숫자를 입력하세요"
-                                    maxLength={6}
-                                    className="flex-1 border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={handleVerifyCode}
-                                    disabled={verifyLoading || !code.trim()}
-                                    className="flex-shrink-0 px-4 py-2.5 text-xs font-medium rounded-lg bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white transition-colors whitespace-nowrap"
-                                >
-                                    {verifyLoading ? "확인 중..." : "인증확인"}
-                                </button>
-                            </div>
-                            <p className="text-xs text-gray-400 mt-1">5분 이내에 입력해야 해요.</p>
-                        </div>
-                    )}
-
-                    {/* 이메일 인증 완료 후에만 새 비밀번호 입력 노출 */}
-                    {emailVerified && (
-                        <>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">새 비밀번호</label>
-                                <input
-                                    type="password"
-                                    value={newPassword}
-                                    onChange={(e) => setNewPassword(e.target.value)}
-                                    placeholder="새 비밀번호를 입력하세요"
-                                    required
-                                    className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-                                />
-                                <p className="text-xs text-gray-400 mt-1">8~20자 이내</p>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">새 비밀번호 확인</label>
-                                <input
-                                    type="password"
-                                    value={confirmPassword}
-                                    onChange={(e) => setConfirmPassword(e.target.value)}
-                                    placeholder="새 비밀번호를 다시 입력하세요"
-                                    required
-                                    className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-                                />
-                            </div>
-                        </>
-                    )}
-
-                    <button
-                        type="submit"
-                        disabled={resetLoading || !emailVerified}
-                        className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors disabled:opacity-50"
+                {codeSent && !emailVerified && (
+                    <AuthField
+                        label="인증번호"
+                        htmlFor="code"
+                        error={error}
+                        hint={message || "5분 이내에 입력해야 해요."}
                     >
-                        {resetLoading ? "재설정 중..." : !emailVerified ? "이메일 인증을 완료해주세요" : "비밀번호 재설정"}
-                    </button>
-                </form>
+                        <AuthInputRow>
+                            <AuthInput
+                                id="code"
+                                type="text"
+                                inputMode="numeric"
+                                value={code}
+                                onChange={(e) => setCode(e.target.value)}
+                                placeholder="6자리 숫자를 입력하세요"
+                                maxLength={6}
+                                autoComplete="one-time-code"
+                            />
+                            <AuthActionButton
+                                onClick={handleVerifyCode}
+                                disabled={!code.trim() || verifyLoading}
+                            >
+                                {verifyLoading ? "확인 중..." : "인증확인"}
+                            </AuthActionButton>
+                        </AuthInputRow>
+                    </AuthField>
+                )}
 
-                <p className="text-center text-sm text-gray-400 mt-6">
-                    <Link to="/login" className="text-green-600 font-medium hover:underline">
-                        로그인으로 돌아가기
-                    </Link>
-                </p>
-            </div>
-        </div>
+                {/* 이메일 인증 완료 후에만 새 비밀번호 입력 노출 */}
+                {emailVerified && (
+                    <>
+                        <AuthField label="새 비밀번호" htmlFor="newPassword" hint="8~20자 이내">
+                            <AuthInput
+                                id="newPassword"
+                                type="password"
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                placeholder="새 비밀번호를 입력하세요"
+                                autoComplete="new-password"
+                                required
+                            />
+                        </AuthField>
+                        <AuthField label="새 비밀번호 확인" htmlFor="confirmPassword" error={error}>
+                            <AuthInput
+                                id="confirmPassword"
+                                type="password"
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                placeholder="새 비밀번호를 다시 입력하세요"
+                                autoComplete="new-password"
+                                required
+                            />
+                        </AuthField>
+                        <AuthPrimaryButton type="submit" disabled={resetLoading} className="mt-2">
+                            {resetLoading ? "재설정 중..." : "비밀번호 재설정"}
+                        </AuthPrimaryButton>
+                    </>
+                )}
+            </form>
+
+            <AuthBoxLink to="/login" className="mt-9">로그인으로 돌아가기</AuthBoxLink>
+        </AuthLayout>
     );
 }
 

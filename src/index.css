@@ -1,1 +1,170 @@
 @import "tailwindcss";
+
+/* ==========================================================================
+   GrowLab Design System
+   - Grid: Desktop 1920 / 12col / margin 240 / gutter 24
+           Mobile 390 / 4col / margin 20 / gutter 16  (4배수)
+   - Color: Gray 50~950, Brand, Main, Status
+   - Typography: Pretendard (Bold / Medium / Regular)
+   ========================================================================== */
+
+@theme {
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    system-ui, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+
+  /* Gray Color */
+  --color-gray-950: #0a0a0a;
+  --color-gray-900: #171717;
+  --color-gray-800: #262626;
+  --color-gray-700: #404040;
+  --color-gray-600: #525252;
+  --color-gray-500: #737373;
+  --color-gray-400: #a3a3a3;
+  --color-gray-300: #d4d4d4;
+  --color-gray-200: #e5e5e5;
+  --color-gray-100: #f5f5f5;
+  --color-gray-50: #fafafa;
+
+  /* Brand / Main Color */
+  --color-brand: #304d31;        /* Main Color */
+  --color-brand-deep: #19291a;   /* Main Sub Color1 */
+  --color-brand-bright: #72b875; /* Main Sub Color2 */
+  --color-brand-leaf: #66a368;   /* Main Sub Color3 */
+  --color-brand-olive: #879958;  /* Brand Sub Color1 */
+  --color-brand-lime: #adc471;   /* Brand Sub Color2 (2026.10.05 추가) */
+  --color-brand-cream: #efedde;  /* Brand Sub Color3 */
+
+  /* Status Color (2026.10.05 추가) */
+  --color-success-bg: #ecfeed;   /* Success Bg Color */
+  --color-error-bg: #fef2f2;     /* Error Bg Color */
+  --color-error: #dd2326;        /* Error Text Color */
+  --color-error-sub: #f26d70;    /* Error Sub Text Color */
+
+  /* 시스템 폭 (12col 기준 n칸 폭 = 98n + 24(n-1)) */
+  --container-col-4: 464px;
+  --container-col-6: 708px;
+  --container-col-8: 952px;
+  --container-col-12: 1440px;
+}
+
+/* ── Typography: 모바일 기준, lg(1024px~)부터 PC 값 ── */
+@utility text-h1 {
+  font-size: 32px;
+  line-height: 40px;
+  letter-spacing: -0.01em;
+  @media (width >= 64rem) {
+    font-size: 40px;
+    line-height: 56px;
+    letter-spacing: -1px;
+  }
+}
+@utility text-h2 {
+  font-size: 24px;
+  line-height: 32px;
+  letter-spacing: -0.01em;
+  @media (width >= 64rem) {
+    font-size: 32px;
+    line-height: 48px;
+    letter-spacing: -1px;
+  }
+}
+@utility text-h3 {
+  font-size: 20px;
+  line-height: 24px;
+  letter-spacing: -0.01em;
+  @media (width >= 64rem) {
+    font-size: 26px;
+    line-height: 40px;
+    letter-spacing: -1px;
+  }
+}
+/* 모바일 표에 H4가 없어 모바일 H3 값을 사용 */
+@utility text-h4 {
+  font-size: 20px;
+  line-height: 24px;
+  letter-spacing: -0.01em;
+  @media (width >= 64rem) {
+    font-size: 24px;
+    line-height: 28px;
+    letter-spacing: -1px;
+  }
+}
+@utility text-sub1 {
+  font-size: 18px;
+  line-height: 24px;
+  letter-spacing: -0.01em;
+  @media (width >= 64rem) {
+    font-size: 20px;
+    line-height: 28px;
+    letter-spacing: -1px;
+  }
+}
+@utility text-body1 {
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: 0;
+}
+@utility text-body2 {
+  font-size: 14px;
+  line-height: 24px;
+  letter-spacing: 0;
+}
+@utility text-caption {
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0;
+}
+
+/* ── Grid ── */
+/* 페이지 컨테이너: 1920에서 좌우 240 / 내용 1440, 모바일 좌우 20 */
+@utility container-page {
+  width: 100%;
+  max-width: calc(1440px + 40px);
+  margin-inline: auto;
+  padding-inline: 20px;
+}
+/* 4col(gutter 16) → lg부터 12col(gutter 24) */
+@utility grid-system {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 16px;
+  @media (width >= 64rem) {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: 24px;
+  }
+}
+
+/* 화면 높이: 화면 비율 자동 맞춤(utils/appZoom.js)으로 축소된 만큼 보정한 100vh.
+   축소 중에는 100vh가 실제 화면보다 짧아지므로, 화면 높이를 채워야 하는 곳은 이 값을 쓴다 */
+:root {
+  --app-zoom: 1;
+  --screen-h: calc(100vh / var(--app-zoom));
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color: var(--color-gray-900);
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply text-body1 bg-gray-50;
+  }
+}
+
+/* ── 스크롤 영역 (Figma 홈 카드 목록): 폭 20 영역 + 12 thumb ── */
+@utility scrollbar-growlab {
+  scrollbar-gutter: stable;
+  &::-webkit-scrollbar {
+    width: 20px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--color-gray-300);
+    border: 4px solid transparent;
+    border-radius: 9999px;
+    background-clip: content-box;
+  }
+}

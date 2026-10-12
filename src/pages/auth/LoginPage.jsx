@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { loginApi } from "../../api/authApi";
+import AuthLayout from "../../components/layouts/AuthLayout";
+import { AuthHeading, AuthField, AuthInput, AuthPrimaryButton } from "../../components/auth/AuthUI";
 
 function LoginPage() {
     const navigate = useNavigate();
@@ -23,7 +25,7 @@ function LoginPage() {
             localStorage.setItem("userId", res.data.userId);
             localStorage.setItem("role", res.data.role);
             navigate("/");
-        } catch (err) {
+        } catch {
             setError("아이디 또는 비밀번호가 올바르지 않습니다.");
         } finally {
             setLoading(false);
@@ -31,68 +33,58 @@ function LoginPage() {
     };
 
     return (
-        <div className="min-h-[80vh] flex items-center justify-center">
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm w-full max-w-md p-8">
-                <div className="text-center mb-8">
-                    <div className="text-3xl mb-2">🌱</div>
-                    <h1 className="text-2xl font-bold text-gray-800">GrowLab</h1>
-                    <p className="text-sm text-gray-400 mt-1">스마트팜 관리 플랫폼</p>
-                </div>
+        <AuthLayout>
+            <AuthHeading title="반가워요!" subtitle="Grow Lab 에 오신걸 환영해요" />
 
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                    {error && (
-                        <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2">
-                            {error}
-                        </div>
-                    )}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">아이디</label>
-                        <input
+            <form onSubmit={handleSubmit} className="mt-12">
+                <div className="flex flex-col gap-7">
+                    <AuthField label="아이디" htmlFor="username">
+                        <AuthInput
+                            id="username"
                             type="text"
                             name="username"
                             value={form.username}
                             onChange={handleChange}
                             placeholder="아이디를 입력하세요"
+                            autoComplete="username"
                             required
-                            className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                         />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
-                        <input
+                    </AuthField>
+                    <AuthField label="비밀번호" htmlFor="password">
+                        <AuthInput
+                            id="password"
                             type="password"
                             name="password"
                             value={form.password}
                             onChange={handleChange}
                             placeholder="비밀번호를 입력하세요"
+                            autoComplete="current-password"
                             required
-                            className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                         />
-                    </div>
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors disabled:opacity-50"
-                    >
-                        {loading ? "로그인 중..." : "로그인"}
-                    </button>
+                    </AuthField>
+                </div>
 
-                    {/* ✅ 아이디/비밀번호 찾기 링크 */}
-                    <div className="flex items-center justify-center gap-3 text-xs text-gray-400">
-                        <Link to="/find-id" className="hover:text-green-600 hover:underline">아이디 찾기</Link>
-                        <span className="text-gray-200">|</span>
-                        <Link to="/forgot-password" className="hover:text-green-600 hover:underline">비밀번호 찾기</Link>
-                    </div>
-                </form>
+                {error && (
+                    <p role="alert" className="mt-4 text-body2 text-red-600">{error}</p>
+                )}
 
-                <p className="text-center text-sm text-gray-400 mt-6">
-                    계정이 없으신가요?{" "}
-                    <Link to="/signup" className="text-green-600 font-medium hover:underline">
-                        회원가입
-                    </Link>
-                </p>
+                <AuthPrimaryButton type="submit" disabled={loading} className="mt-9">
+                    {loading ? "로그인 중..." : "로그인"}
+                </AuthPrimaryButton>
+            </form>
+
+            {/* 링크 박스 112px 고정, 구분선 좌우 32px */}
+            <div className="mt-16 flex items-center justify-center gap-8 text-sub1 text-gray-400">
+                <Link to="/find-id" className="w-28 text-center hover:text-gray-600">아이디 찾기</Link>
+                <span className="w-px h-8 -mr-px bg-gray-300" aria-hidden="true" />
+                <Link to="/forgot-password" className="w-28 text-center hover:text-gray-600">비밀번호 찾기</Link>
             </div>
-        </div>
+
+            <div className="mt-9 h-[68px] rounded bg-white flex items-center justify-center gap-5 text-sub1">
+                <span className="text-gray-400">계정이 없으신가요?</span>
+                <Link to="/signup" className="font-medium text-brand hover:underline">회원가입</Link>
+            </div>
+        </AuthLayout>
     );
 }
 
