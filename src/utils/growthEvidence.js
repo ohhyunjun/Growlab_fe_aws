@@ -3,6 +3,69 @@ export const MIN_TREND_DAYS = 2;
 export const MIN_COMPARISON_DAYS = 3;
 export const MIN_COMPARISON_PORTS = 4;
 
+const RATE_STATUSES = new Set(["growing", "flat", "down"]);
+
+// 이 포트의 최근 성장 속도. 화면에 따로 내세우지 않고 다른 재배와 견줄 때만 쓴다.
+// 서버가 관측 부족으로 판단했거나 형식이 어긋나면 대기로 둔다.
+function prepareGrowthRate(rate) {
+    const ready = RATE_STATUSES.has(rate?.status) && Number.isFinite(rate?.ratePerDay);
+    return {
+        ready,
+        status: ready ? rate.status : "pending",
+        ratePerDay: ready ? rate.ratePerDay : null,
+        previousRatePerDay: ready && Number.isFinite(rate.previousRatePerDay) ? rate.previousRatePerDay : null,
+        observationDays: ready ? rate.observationDays ?? null : null,
+        spanDays: ready ? rate.spanDays ?? null : null,
+    };
+}
+
+// 이 포트가 며칠 전보다 얼마나 커졌는지. 크기는 같은 포트의 과거와만 견준다.
+function prepareSizeChange(change) {
+    const ready = change?.ready === true && Number.isFinite(change.changePercent) && Number.isFinite(change.days);
+    return ready
+        ? { ready: true, days: change.days, changePercent: change.changePercent }
+        : { ready: false, days: null, changePercent: null };
+}
+
+// 박스 면적은 사진마다 흔들리므로 이 안쪽의 변화는 '비슷'으로 본다.
+export const SAME_SIZE_BAND_PERCENT = 3;
+
+// 화면에 쓰는 과거 대비 크기 문구. 소수점 없이 '약'으로 보여준다.
+export function describeSizeChange(change) {
+    if (!change?.ready) return "관측 대기";
+    const rounded = Math.round(change.changePercent);
+    if (Math.abs(rounded) < SAME_SIZE_BAND_PERCENT) return `${change.days}일 전과 비슷`;
+    return `${change.days}일 전보다 약 ${rounded > 0 ? "+" : ""}${rounded}%`;
+}
+
+// 크기는 포트가 화면에 어떻게 찍히느냐에 달려 있어 포트끼리 견주지 않는다. 포트끼리는 속도만 견준다:
+// 같은 품종의 다른 재배 기록이 심은 뒤 같은 시기에 보인 하루 성장률과의 비교.
+const VERDICT_LABEL = { faster: "더 빠름", similar: "비슷함", slower: "더 느림" };
+
+function prepareReference(reference) {
+    const ready = reference?.ready === true && reference.verdict in VERDICT_LABEL
+        && Number.isFinite(reference.ratePerDay);
+    if (!ready) return { ready: false, verdict: null, ratePerDay: null, plantCount: null };
+    return {
+        ready: true,
+        verdict: reference.verdict,
+        ratePerDay: reference.ratePerDay,
+        plantCount: reference.plantCount ?? null,
+    };
+}
+
+// 포트 상태 판정에 쓰는 비교 결과. behind: 같은 시기의 다른 재배보다 뚜렷이 느리게 자란다.
+export function growthComparison(trend) {
+    const verdict = trend?.reference?.ready ? trend.reference.verdict : null;
+    return { verdict, behind: verdict === "slower" };
+}
+
+// 화면에는 같은 품종·경과일의 성장 속도 비교 결과만 간결하게 보여준다.
+export function describeComparison(reference) {
+    if (!reference?.ready) return "비교 대기";
+    return VERDICT_LABEL[reference.verdict];
+}
+
 export function prepareGrowthTrend(trend) {
     if (!trend) return null;
 
@@ -24,6 +87,11 @@ export function prepareGrowthTrend(trend) {
         rank: comparisonReady ? trend.rank : null,
         portCount: comparisonReady ? trend.portCount : null,
         gapPercent: comparisonReady ? trend.gapPercent : null,
+        sizeChange: prepareSizeChange(trend.sizeChange),
+        growthRate: prepareGrowthRate(trend.growthRate),
+        reference: prepareReference(trend.reference),
+        // 포트를 옮겨 화면에 찍히는 자리가 마지막으로 바뀐 경과일. 크기와 속도는 그 뒤 사진끼리만 견준다.
+        viewChangedDay: Number.isFinite(trend.viewChangedDay) ? trend.viewChangedDay : null,
         observationDays,
         trendReady,
         comparisonReady,

@@ -4,7 +4,9 @@ import { getUserDevicesApi, updateLedApi, updatePhotoIntervalApi } from "../../a
 import { getAllNoticesApi } from "../../api/noticeApi";
 import { getLatestSensorApi } from "../../api/sensorApi";
 import { API_BASE } from "../../api/config";
-import { getLatestPredictionApi } from "../../api/predictionApi";
+import { getLatestHarvestPredictionApi } from "../../api/predictionApi";
+import HarvestReadout from "../../components/HarvestReadout";
+import { isLettucePlant } from "../../utils/harvestPrediction";
 import { getGrowthTrendApi } from "../../api/photoApi";
 import {
     finishMonitoringPerformanceRun,
@@ -14,7 +16,8 @@ import {
 } from "../../utils/monitoringPerformance";
 import { resolveRanges, scoreSensor } from "../../utils/sensorRange";
 import { deviceSensorRanges, sharedSensorStatus } from "../../utils/sharedEnvironment";
-import { prepareGrowthTrend } from "../../utils/growthEvidence";
+import { prepareGrowthTrend, growthComparison, describeSizeChange, describeComparison, SAME_SIZE_BAND_PERCENT } from "../../utils/growthEvidence";
+import { withoutGrowthSection } from "../../utils/aiAdvice";
 
 const SPECIES_EMOJI = {
     "방울토마토": "🍅", "청상추": "🥬", "적상추": "🥬",
@@ -54,65 +57,10 @@ const fetchAiData = async (deviceData, plantData, liveSensor) => {
             })
         });
         const data = await response.json();
-        return data.advice || null;
+        return withoutGrowthSection(data.advice) || null;
     } catch {
         return null;
     }
-};
-
-// ── AI 조언 텍스트를 파싱해서 구조화된 분석 추출 ──────────────
-const parseAiAnalysis = (adviceText) => {
-    if (!adviceText) return null;
-
-    const sections = {
-        environment: null,
-        lighting: null,
-        nutrients: null,
-        growth: null,
-    };
-
-    const lines = adviceText.split('\n').map(l => l.trim()).filter(Boolean);
-    let currentSection = null;
-    const sectionBuf = {};
-
-    for (const line of lines) {
-        if (line.includes('[환경 전반]') || line.startsWith('환경 전반')) {
-            currentSection = 'environment';
-            sectionBuf[currentSection] = [];
-        } else if (line.includes('[조명 관리]') || line.startsWith('조명 관리')) {
-            currentSection = 'lighting';
-            sectionBuf[currentSection] = [];
-        } else if (line.includes('[양액 시스템]') || line.startsWith('양액 시스템')) {
-            currentSection = 'nutrients';
-            sectionBuf[currentSection] = [];
-        } else if (line.includes('[성장 속도]') || line.startsWith('성장 속도')) {
-            currentSection = 'growth';
-            sectionBuf[currentSection] = [];
-        } else if (currentSection) {
-            const colonIdx = line.indexOf(':');
-            const content = colonIdx !== -1 && colonIdx < 10 ? line.slice(colonIdx + 1).trim() : line;
-            if (content) sectionBuf[currentSection].push(content);
-        }
-    }
-
-    sections.environment = sectionBuf['environment']?.join(' ') || null;
-    sections.lighting    = sectionBuf['lighting']?.join(' ')    || null;
-    sections.nutrients   = sectionBuf['nutrients']?.join(' ')   || null;
-    sections.growth      = sectionBuf['growth']?.join(' ')      || null;
-
-    if (!sections.environment && !sections.lighting) {
-        const envMatch = adviceText.match(/환경 전반[：:]\s*(.+?)(?=조명|양액|성장|$)/s);
-        const lightMatch = adviceText.match(/조명 관리[：:]\s*(.+?)(?=환경|양액|성장|$)/s);
-        const nutriMatch = adviceText.match(/양액 시스템[：:]\s*(.+?)(?=환경|조명|성장|$)/s);
-        const growMatch = adviceText.match(/성장 속도[：:]\s*(.+?)(?=환경|조명|양액|$)/s);
-
-        sections.environment = envMatch?.[1]?.trim()   || null;
-        sections.lighting    = lightMatch?.[1]?.trim() || null;
-        sections.nutrients   = nutriMatch?.[1]?.trim() || null;
-        sections.growth      = growMatch?.[1]?.trim()  || null;
-    }
-
-    return sections;
 };
 
 // ── Vision AI 분석 점수 계산 (센서 데이터 기반) ───────────────
@@ -189,490 +137,36 @@ const calcVisionScore = (sensorData, ranges) => {
     };
 };
 
-// 기기 공통 센서 점수에 확인된 질병과 충분한 관측으로 계산한 성장 격차만 반영한다.
+// 기기 공통 센서 점수에 확인된 질병과, 같은 시기 다른 재배와 견준 성장 속도만 반영한다.
 // 사진에서 식물을 못 찾았더라도 센서 상태는 별도로 보여준다.
 const calcPortHealth = (base, plant, trend) => {
     if (!plant) return { portDataAvailable: false, reason: "no_plant" };
     if (base.grade === "-") return { portDataAvailable: false, reason: "no_sensor" };
     const diseased = isDiseased(plant.diseaseResult);
-    const gap = trend?.comparisonReady ? trend.gapPercent : null;
+    const { verdict, behind } = growthComparison(trend);
 
     let score = base.score;
     const issues = [...(base.issues || [])];
     if (diseased) { score -= 35; issues.unshift(`질병 의심(${plant.diseaseResult})`); }
-    if (gap != null) {
-        if (gap <= -15) {
-            // 격차가 클수록 더 감점 (−15%→15점, 상한 35점). 환경이 좋아도 성장 정체는 뚜렷이 반영.
-            const pen = Math.min(35, 15 + (Math.abs(gap) - 15) * 0.3);
-            score -= pen;
-            issues.unshift(`성장 정체 ${gap}%`);
-        }
-        else if (gap <= -5) { score -= 7; }
-        else if (gap >= 10) { score += 3; }
-    }
+    // 환경이 좋아도 같은 시기의 다른 재배보다 뚜렷이 느리면 점수에 반영한다.
+    if (behind) { score -= 15; issues.unshift("같은 시기의 다른 재배보다 느린 성장"); }
+    else if (verdict === "faster") { score += 3; }
     score = Math.max(0, Math.min(100, Math.round(score)));
 
     const grade = score >= 95 ? "S" : score >= 85 ? "A" : score >= 75 ? "B" : score >= 65 ? "C" : "D";
     let growthStatus = score >= 85 ? "정상" : score >= 65 ? "주의" : "위험";
-    if ((diseased || (gap != null && gap <= -15)) && growthStatus === "정상") growthStatus = "주의";
-    const diseaseRisk = diseased ? "높음" : (gap != null && gap <= -15) ? "보통" : base.diseaseRisk;
+    if ((diseased || behind) && growthStatus === "정상") growthStatus = "주의";
+    const diseaseRisk = diseased ? "높음" : behind ? "보통" : base.diseaseRisk;
 
     return { portDataAvailable: true, score, grade, growthStatus, diseaseRisk, issues };
 };
 
-function GrowthSummary({ text }) {
-    const [expanded, setExpanded] = useState(false);
-    const isLong = text.length > 60;
-    return (
-        <div className="pt-1 border-t border-gray-50 mt-1">
-            <p className="text-caption text-gray-500 ">
-                {!expanded && isLong ? text.slice(0, 60) + "..." : text}
-            </p>
-            {isLong && (
-                <button
-                    onClick={() => setExpanded(prev => !prev)}
-                    className="text-caption text-brand hover:text-brand mt-1"
-                >
-                    {expanded ? "접기" : "더보기"}
-                </button>
-            )}
-        </div>
-    );
-}
-
 // ── 생육 타임라인 차트 ────────────────────────────────────────
-const parseDate = (value) => {
-    if (!value) return null;
-    const normalized = String(value).replace(" ", "T").replace(/(\.\d{3})\d+/, "$1");
-    const date = value instanceof Date ? value : new Date(normalized);
-    return Number.isNaN(date.getTime()) ? null : date;
-};
-
-// 서버는 선택한 식물의 다음 단계 하나를 예측한다. 다른 단계의 결과는 재사용하지 않는다.
-const getNextStageForecast = (plant, prediction, stageNames, stageDurationDays = []) => {
-    const plantedAt = parseDate(plant?.plantedAt);
-    const currentStage = Number(plant?.stageIndex ?? 0);
-    if (!plantedAt || !Number.isInteger(currentStage) || currentStage < 0
-        || currentStage >= stageNames.length - 1) return null;
-
-    const stage = currentStage + 1;
-    const startDay = stageDurationDays[stage];
-    let baselineDate = null;
-    if (startDay !== null && startDay !== undefined && Number.isFinite(Number(startDay)) && Number(startDay) >= 0) {
-        baselineDate = new Date(plantedAt);
-        baselineDate.setDate(baselineDate.getDate() + Number(startDay));
-    }
-
-    const pointDate = parseDate(prediction?.expectedAt);
-    const rangeStart = parseDate(prediction?.rangeStartAt);
-    const rangeEnd = parseDate(prediction?.rangeEndAt);
-    const validPrediction = prediction?.plantId != null && String(prediction.plantId) === String(plant.id)
-        && Number(prediction?.predictedStage) === stage
-        && pointDate && rangeStart && rangeEnd
-        && rangeStart >= plantedAt && rangeStart <= pointDate && pointDate <= rangeEnd;
-
-    // 화면 주값은 항상 산술 참고 일정(품종 기준). AI 예측은 섀도로만 기록/표시하고 화면 날짜를 바꾸지 않는다.
-    // (AI-Hub 자료에서만 검증됐고 GrowLab 성능은 미확인이라, 화면 날짜 보정은 자체 데이터 확인 후 결정)
-    const refBaseline = parseDate(prediction?.baselineAt) || baselineDate;
-    const shadow = validPrediction ? {
-        date: pointDate,                              // AI expectedAt (섀도)
-        range: { start: rangeStart, end: rangeEnd },  // AI 예측 범위 (섀도)
-        mode: prediction.predictionMode,              // LIGHTGBM_AI / STATISTICAL_WARMUP / ...
-    } : null;
-
-    return {
-        stage,
-        stageLabel: stageNames[stage],
-        baselineDate: refBaseline,
-        pointDate: refBaseline,        // 화면 주값 = 산술 참고 일정 (AI 유무와 무관하게 항상)
-        range: null,                   // 화면엔 산술만 (AI 범위는 섀도)
-        aiReady: false,                // 화면 주값은 AI가 아님
-        source: "품종 기준 일정",
-        shadow,                        // AI 섀도 (검증용, 화면 날짜에 미반영)
-    };
-};
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-const addDays = (date, days) => new Date(date.getTime() + days * DAY_MS);
-
-const fmtDate = (date) => `${date.getMonth() + 1}/${date.getDate()}`;
-const fmtReadableDate = (date) => `${date.getMonth() + 1}월 ${date.getDate()}일`;
-
-
-
-const describeDateShift = (baselineDate, predictedDate) => {
-    if (!baselineDate || !predictedDate) return null;
-    const shiftDays = (predictedDate - baselineDate) / DAY_MS;
-    if (Math.abs(shiftDays) < 0.05) return "평소 예상과 비슷해요";
-    return `평소보다 ${Math.abs(shiftDays).toFixed(1)}일 ${shiftDays < 0 ? "빨라요" : "늦어요"}`;
-};
-
 function EmptyTimeline({ children }) {
     return (
         <div className="min-h-44 rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 flex items-center justify-center px-4 text-center text-body2 text-gray-500">
             {children}
         </div>
-    );
-}
-
-function GrowthTimelineChart({
-    selectedPlant,
-    prediction,
-    speciesName,
-    stageNames = ["씨앗", "발아", "수확"],
-    stageDurationDays = [],
-}) {
-    const [hovered, setHovered] = useState(null);
-    const availableStageNames = Array.isArray(stageNames) && stageNames.length > 0
-        ? stageNames
-        : ["씨앗", "발아", "수확"];
-    const displayStageNames = availableStageNames;
-    const lastStageIdx = displayStageNames.length - 1;
-
-    if (!selectedPlant) {
-        return <EmptyTimeline>이 포트에 등록된 식물이 없어요.</EmptyTimeline>;
-    }
-
-    const today = new Date();
-    const plantedAt = parseDate(selectedPlant.plantedAt);
-    const germinatedAt = parseDate(selectedPlant.germinatedAt);
-    const maturedAt = parseDate(selectedPlant.maturedAt);
-    if (!plantedAt) {
-        return <EmptyTimeline>재배 시작일 정보가 없어요.</EmptyTimeline>;
-    }
-
-    const displaySpecies = speciesName || selectedPlant.speciesName || selectedPlant.species || "재배 식물";
-    const serverStageIdx = Number(selectedPlant.stageIndex ?? 0);
-    const currentStageIdx = Number.isInteger(serverStageIdx)
-        ? Math.min(lastStageIdx, Math.max(0, serverStageIdx)) : 0;
-    const activeForecast = getNextStageForecast(
-        { ...selectedPlant, stageIndex: currentStageIdx }, prediction, displayStageNames, stageDurationDays,
-    );
-    const shadowShift = activeForecast?.shadow
-        ? describeDateShift(activeForecast.baselineDate, activeForecast.shadow.date) : null;
-    const rangeText = (range) => range ? `${fmtDate(range.start)} ~ ${fmtDate(range.end)}` : "-";
-    const endCandidates = [
-        today, maturedAt, activeForecast?.pointDate, activeForecast?.range?.end, addDays(today, 7),
-    ].filter(Boolean);
-    const endDate = new Date(Math.max(...endCandidates.map((date) => date.getTime())));
-    const totalMs = Math.max(endDate - plantedAt, DAY_MS);
-
-    const W = 720;
-    const H = Math.max(208, displayStageNames.length * 38 + 68);
-    const PAD = { top: 34, bottom: 34, left: 80, right: 24 };
-    const CW = W - PAD.left - PAD.right;
-    const CH = H - PAD.top - PAD.bottom;
-    const cx = (date) => {
-        const raw = PAD.left + ((date - plantedAt) / totalMs) * CW;
-        return Math.min(W - PAD.right, Math.max(PAD.left, raw));
-    };
-    const cy = (stage) => PAD.top + CH - (stage / Math.max(lastStageIdx, 1)) * CH;
-    const stageBandHeight = Math.min(28, Math.max(16, (CH / Math.max(lastStageIdx, 1)) * 0.42));
-
-    const actualPoints = [{ date: plantedAt, stage: 0, label: displayStageNames[0] }];
-    // 현재 도메인에서 기록한 두 번째/마지막 단계 시각만 사용한다. 중간 날짜는 추정하지 않는다.
-    if (germinatedAt && currentStageIdx >= 1 && lastStageIdx > 1) {
-        actualPoints.push({ date: germinatedAt, stage: 1, label: displayStageNames[1] });
-    }
-    if (maturedAt && currentStageIdx === lastStageIdx && lastStageIdx > 0) {
-        actualPoints.push({ date: maturedAt, stage: lastStageIdx, label: displayStageNames[lastStageIdx] });
-    } else {
-        actualPoints.push({ date: today, stage: currentStageIdx, label: "오늘" });
-    }
-
-    const expectedPoints = activeForecast?.pointDate ? [
-        { date: today, stage: currentStageIdx, label: "오늘" },
-        { date: activeForecast.pointDate, stage: activeForecast.stage, label: `${activeForecast.stageLabel} 예상` },
-    ] : [];
-
-    const makePath = (points) => points.map((point, index) => (
-        `${index === 0 ? "M" : "L"}${cx(point.date).toFixed(1)},${cy(point.stage).toFixed(1)}`
-    )).join(" ");
-
-    return (
-        <section className="border-t border-gray-100 pt-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <h3 className="text-caption font-bold text-gray-700">예측 타임라인</h3>
-                </div>
-
-                <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-caption text-gray-500 sm:flex sm:flex-wrap sm:items-center">
-                    <span className="inline-flex items-center gap-1">
-                        <span className="inline-block h-1 w-5 rounded bg-brand" />
-                        실제 기록
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                        <span className="inline-block w-5 border-t-2 border-dashed border-brand-olive" />
-                        중앙 예상
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                        <span className="inline-block h-2 w-5 rounded-full bg-amber-400" />
-                        예상 범위
-                    </span>
-                </div>
-            </div>
-
-            {activeForecast ? (
-                <div className="mt-3 rounded-xl bg-gray-50 px-3 py-3">
-                    <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-                        <div>
-                            <p className="text-caption font-medium text-gray-500 sm:text-caption">
-                                {activeForecast.stageLabel} 예상일
-                            </p>
-                            <p className={`mt-1 text-body2 font-bold ${
-                                activeForecast.aiReady ? "text-brand" : "text-gray-800"
-                            }`}>
-{activeForecast.pointDate ? fmtReadableDate(activeForecast.pointDate) : "예측 대기"}
-                            </p>
-                        </div>
-                        <span className="hidden h-8 w-px bg-gray-200 sm:block" />
-                        <div>
-                            <p className="text-caption font-medium text-gray-500 sm:text-caption">
-                                AI 섀도 (검증 중 · 화면 미반영)
-                            </p>
-                            <p className="mt-1 text-caption font-bold text-gray-500 sm:text-body2">
-{activeForecast.shadow?.date
-                                    ? fmtReadableDate(activeForecast.shadow.date)
-                                    : "센서 이력 수집 중"}
-                            </p>
-                        </div>
-                        <span className={`ml-auto rounded-full px-2 py-1 text-caption font-bold sm:text-caption ${
-                            activeForecast.aiReady
-                                ? "bg-brand-cream text-brand"
-                                : "bg-white text-gray-500 ring-1 ring-gray-200"
-                        }`}>
-{activeForecast.source}
-                        </span>
-                    </div>
-                    <p className="mt-2 border-t border-gray-200/70 pt-2 text-caption  text-gray-500">
-                        {activeForecast.baselineDate
-                            ? `품종 기준 참고 일정 ${fmtReadableDate(activeForecast.baselineDate)}` : "품종 기준 일정이 아직 없어요."}
-                        {shadowShift ? ` · AI 섀도는 ${shadowShift}로 보지만 화면 날짜엔 반영하지 않아요` : ""}
-                        {activeForecast.shadow ? "" : " · AI 섀도는 센서 이력이 쌓이면 표시해요."}
-                    </p>
-                </div>
-            ) : (
-                <div className="mt-3 rounded-lg bg-brand-cream px-3 py-2 text-caption font-medium text-brand sm:text-caption">
-                    마지막 생육 단계 · 다음 단계 예측 없음
-                </div>
-            )}
-
-            <div className="mt-2 w-full overflow-x-auto sm:overflow-visible">
-                <svg
-                    viewBox={`0 0 ${W} ${H}`}
-                    style={{ width: "100%", minWidth: 420 }}
-                    onMouseLeave={() => setHovered(null)}
-                    role="img"
-aria-label={`${displaySpecies}의 생육 단계와 다음 단계 예상 날짜 그래프`}
-                >
-                    <defs>
-                        <filter id="growth-tip-shadow">
-                            <feDropShadow dx="0" dy="1" stdDeviation="2" floodOpacity="0.1" />
-                        </filter>
-                    </defs>
-
-                    {displayStageNames.map((stageName, stage) => (
-                        <g key={stage}>
-                            <rect
-                                x={PAD.left}
-                                y={cy(stage) - stageBandHeight / 2}
-                                width={CW}
-                                height={stageBandHeight}
-                                rx="10"
-                                fill="#FAFAFA"
-                            />
-                            <line
-                                x1={PAD.left}
-                                y1={cy(stage)}
-                                x2={W - PAD.right}
-                                y2={cy(stage)}
-                                stroke="#E5E5E5"
-                                strokeWidth="1"
-                            />
-                            <text
-                                x={PAD.left - 11}
-                                y={cy(stage)}
-                                textAnchor="end"
-                                dominantBaseline="middle"
-                                fontSize="12"
-                                fill="#737373"
-                                fontWeight="700"
-                            >
-                                {stageName}
-                            </text>
-                        </g>
-                    ))}
-
-                    {activeForecast?.range && (
-                        <rect
-                            x={cx(activeForecast.range.start)}
-                            y={cy(activeForecast.stage) - 9}
-                            width={Math.max(3, cx(activeForecast.range.end) - cx(activeForecast.range.start))}
-                            height="18"
-                            rx="9"
-                            fill="#879958"
-                            opacity="0.24"
-                        >
-                            <title>{`${activeForecast.stageLabel} 예상 범위 ${rangeText(activeForecast.range)}`}</title>
-                        </rect>
-                    )}
-
-                    <path
-                        d={makePath(actualPoints)}
-                        fill="none"
-                        stroke="#304D31"
-                        strokeWidth="3"
-                        strokeLinejoin="round"
-                        strokeLinecap="round"
-                    />
-
-                    {expectedPoints.length > 1 && (
-                        <path
-                            d={makePath(expectedPoints)}
-                            fill="none"
-                            stroke="#879958"
-                            strokeWidth="2.5"
-                            strokeDasharray="7 5"
-                            strokeLinejoin="round"
-                            strokeLinecap="round"
-                        />
-                    )}
-
-                    <line
-                        x1={cx(today)}
-                        y1={PAD.top - 27}
-                        x2={cx(today)}
-                        y2={H - PAD.bottom + 7}
-                        stroke="#304D31"
-                        strokeWidth="1.5"
-                        strokeDasharray="3 3"
-                        opacity="0.65"
-                    />
-                    <rect x={cx(today) - 19} y={4} width="38" height="19" rx="9.5" fill="#304D31" />
-                    <text
-                        x={cx(today)}
-                        y={14}
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        fontSize="12"
-                        fill="white"
-                        fontWeight="700"
-                    >
-                        오늘
-                    </text>
-
-                    {actualPoints.map((point, index) => (
-                        <g
-                            key={`actual-${point.label}-${index}`}
-                            style={{ cursor: "pointer" }}
-                            onMouseEnter={() => setHovered({ ...point, type: "실제 기록" })}
-                        >
-                            <circle
-                                cx={cx(point.date)}
-                                cy={cy(point.stage)}
-                                r={point.label === "오늘" ? 6 : 5}
-                                fill={point.label === "오늘" ? "#304D31" : "#66A368"}
-                                stroke="white"
-                                strokeWidth="2"
-                            />
-                            {point.stage > 0 && point.label !== "오늘" && (
-                                <text
-                                    x={cx(point.date)}
-                                    y={cy(point.stage) - 15}
-                                    textAnchor="middle"
-                                    fontSize="12"
-                                    fill="#304D31"
-                                    fontWeight="700"
-                                >
-                                    {`${point.label} ${fmtDate(point.date)}`}
-                                </text>
-                            )}
-                        </g>
-                    ))}
-
-                    {expectedPoints.slice(1).map((point, index) => {
-                        const pointX = cx(point.date);
-                        const anchor = pointX > W - 120 ? "end" : "start";
-                        const labelX = anchor === "end" ? pointX - 10 : pointX + 10;
-                        return (
-                            <g
-                                key={`expected-${point.label}-${index}`}
-                                style={{ cursor: "pointer" }}
-                                onMouseEnter={() => setHovered({ ...point, type: "예상 날짜" })}
-                            >
-                                <circle
-                                    cx={pointX}
-                                    cy={cy(point.stage)}
-                                    r="8"
-                                    fill="white"
-                                    stroke="#879958"
-                                    strokeWidth="2"
-                                />
-                                <circle cx={pointX} cy={cy(point.stage)} r="3" fill="#879958" />
-                                <text
-                                    x={labelX}
-                                    y={cy(point.stage) - 15}
-                                    textAnchor={anchor}
-                                    fontSize="12"
-                                    fill="#525252"
-                                    fontWeight="700"
-                                >
-                                    {`${point.label} ${fmtDate(point.date)}`}
-                                </text>
-                            </g>
-                        );
-                    })}
-
-                    <text x={PAD.left} y={H - 12} fontSize="12" fill="#737373">
-                        {fmtDate(plantedAt)} 파종
-                    </text>
-                    <text x={W - PAD.right} y={H - 12} textAnchor="end" fontSize="12" fill="#737373">
-                        {fmtDate(endDate)}
-                    </text>
-
-                    {hovered && (() => {
-                        const tx = cx(hovered.date);
-                        const ty = cy(hovered.stage);
-                        const flip = tx > W * 0.72;
-                        const boxX = flip ? tx - 122 : tx + 12;
-                        const boxY = Math.max(28, ty - 25);
-                        return (
-                            <g>
-                                <rect
-                                    x={boxX}
-                                    y={boxY}
-                                    width="110"
-                                    height="45"
-                                    rx="8"
-                                    fill="white"
-                                    stroke="#E5E5E5"
-                                    filter="url(#growth-tip-shadow)"
-                                />
-                                <text
-                                    x={boxX + 55}
-                                    y={boxY + 16}
-                                    textAnchor="middle"
-                                    fontSize="12"
-                                    fill="#404040"
-                                    fontWeight="700"
-                                >
-                                    {hovered.label}
-                                </text>
-                                <text
-                                    x={boxX + 55}
-                                    y={boxY + 32}
-                                    textAnchor="middle"
-                                    fontSize="12"
-                                    fill="#737373"
-                                >
-                                    {fmtDate(hovered.date)} · {hovered.type}
-                                </text>
-                            </g>
-                        );
-                    })()}
-                </svg>
-            </div>
-        </section>
     );
 }
 
@@ -696,64 +190,27 @@ const portDotHealth = (plant) => {
 const resolvePortHealth = (plant, trend) => {
     if (!plant) return "empty";
     if (isDiseased(plant.diseaseResult)) return "bad";
-    if (!trend?.comparisonReady) return "pending";
-    if (trend.gapPercent <= -15) return "warn";
-    return "good";
+    const { verdict, behind } = growthComparison(trend);
+    if (!verdict) return "pending";
+    return behind ? "warn" : "good";
 };
 
-// 다음 단계 예상 — 차트 대신 텍스트로 제공
-function NextStageReadout({ selectedPlant, prediction, stageNames, stageDurationDays }) {
-    if (!selectedPlant) {
-        return <EmptyTimeline>이 포트에 식물이 없어요</EmptyTimeline>;
+// 관측 단계와 별개로 수확기 도달일 하나만 예측한다.
+// 관측된 생육 단계는 그대로 표시하지만, 날짜 예측은 수확기에만 제공한다.
+function HarvestForecastSection({ selectedPlant, prediction }) {
+    if (!selectedPlant) return <EmptyTimeline>이 포트에 식물이 없어요</EmptyTimeline>;
+    if (!isLettucePlant(selectedPlant)) {
+        return (
+            <section className="rounded-xl bg-gray-50 p-4" aria-label="수확기 예상">
+                <h3 className="text-caption font-bold text-gray-500">수확기 예상</h3>
+                <p className="mt-2 text-body2 text-gray-600">이 품종의 수확기 예측 모델은 아직 제공하지 않아요.</p>
+            </section>
+        );
     }
-    const currentStageIdx = Number(selectedPlant.stageIndex ?? 0);
-    const isLastStage = currentStageIdx >= stageNames.length - 1;
-    const forecast = getNextStageForecast(
-        { ...selectedPlant, stageIndex: currentStageIdx }, prediction, stageNames, stageDurationDays,
-    );
-    const badges = stageNames.map((name, i) => {
-        const state = i < currentStageIdx ? "done" : i === currentStageIdx ? "now" : "future";
-        const cls = state === "done" ? "bg-brand text-white"
-            : state === "now" ? "bg-brand-cream text-brand ring-1 ring-brand-leaf"
-            : "bg-gray-200 text-gray-500";
-        return { name, cls };
-    });
-
-    return (
-        <div className="rounded-xl bg-gray-50 p-4">
-            <div className="flex items-center justify-between mb-1">
-                <span className="text-caption font-bold text-gray-500">다음 단계 예상</span>
-                <span className="text-caption text-gray-500 border border-dashed border-gray-300 rounded-full px-2 py-1">
-                    {forecast ? forecast.source : "통계 기반 예상"}
-                </span>
-            </div>
-            {isLastStage ? (
-                <div className="flex items-end gap-2">
-                    <span className="text-h4 font-bold text-brand">수확 적기</span>
-                    <span className="text-caption text-gray-500 pb-1">마지막 단계예요</span>
-                </div>
-            ) : forecast?.pointDate ? (
-                <div className="flex items-end gap-2">
-                    <span className="text-h2 font-bold text-gray-800">{fmtReadableDate(forecast.pointDate)}</span>
-                    <span className="text-caption text-gray-500 pb-2">{forecast.stageLabel} 예상</span>
-                </div>
-            ) : (
-                <div className="text-body2 text-gray-500 py-2">예상 시점을 계산 중이에요</div>
-            )}
-            <div className="flex flex-wrap items-center gap-2 mt-3 text-caption">
-                {badges.map((b, i) => (
-                    <span key={b.name} className="inline-flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded-md font-medium ${b.cls}`}>{b.name}</span>
-                        {i < badges.length - 1 && <span className="text-gray-500">→</span>}
-                    </span>
-                ))}
-            </div>
-            <p className="mt-2 text-caption text-gray-500">등록된 단계·품종 기준과 경과시간으로 계산 · YOLO 단계 확정과는 별개예요.</p>
-        </div>
-    );
+    return <HarvestReadout plant={selectedPlant} prediction={prediction} />;
 }
 
-// 성장 추이 SVG (이 포트 실선 + 또래 평균 점선). peer 값이 null이면 그 구간은 건너뛴다.
+// 성장 추이 SVG (이 포트의 크기 변화). peerPoints를 주면 점선으로 함께 그리지만, 크기는 포트끼리 견주지 않으므로 지금은 쓰지 않는다.
 function GrowthTrendSvg({ points, peerPoints, color }) {
     const vals = (points || []).map(p => p?.value).filter(v => v != null);
     if (!vals.length) {
@@ -789,64 +246,66 @@ function GrowthTrendSvg({ points, peerPoints, color }) {
     );
 }
 
-// 성장 추이 카드 (성장추이 SVG + 또래 순위/격차)
+// 성장 추이 카드 (이 포트 자신의 크기 변화)
 function GrowthTrendCard({ trend, loading, error, color }) {
     const points = trend?.points ?? [];
-    const peerPoints = trend?.peerPoints ?? [];
-    const rank = trend?.rank ?? null;
-    const portCount = trend?.portCount ?? null;
-    const gap = trend?.gapPercent ?? null;
-    const gapColor = gap == null ? "text-gray-500"
-        : gap >= 5 ? "text-brand" : gap <= -15 ? "text-red-600" : gap < 0 ? "text-amber-700" : "text-gray-500";
     return (
         <div className="rounded-xl bg-gray-50 p-4">
             <div className="flex items-center justify-between mb-1">
                 <span className="text-caption font-bold text-gray-500">성장 추이 <span className="text-caption font-normal text-gray-500">관측</span></span>
-                {rank != null && portCount ? <span className={`text-caption font-bold ${gapColor}`}>{portCount}중 {rank}위</span> : null}
             </div>
             {loading ? (
                 <div className="h-12 flex items-center text-caption text-gray-500">불러오는 중...</div>
             ) : error ? (
                 <div className="h-12 flex items-center text-caption text-red-600">관측 데이터를 불러오지 못했어요.</div>
             ) : (
-                <GrowthTrendSvg points={points} peerPoints={peerPoints} color={color} />
+                <GrowthTrendSvg points={points} color={color} />
             )}
             {!loading && !error && (
                 <>
                     <div className="flex items-center gap-3 mt-1 text-caption text-gray-500">
                         {points.length > 0 && <span className="flex items-center gap-1"><span className="w-3 h-1 rounded" style={{ background: color }} />이 포트</span>}
-                        {trend?.comparisonReady && <span className="flex items-center gap-1"><span className="w-3 border-t border-dashed border-gray-400" />또래 평균</span>}
-                        {gap != null && <span className={`ml-auto font-medium ${gapColor}`}>{gap > 0 ? "+" : ""}{gap}%</span>}
                     </div>
                     <p className="mt-2 text-caption text-gray-500">
                         {trend?.observationDays === 0 || !trend
                             ? "YOLO 크기 관측이 없습니다. 사진에서 자란 식물을 놓쳤을 수도 있어요."
                             : !trend.trendReady
                                 ? `관측 ${trend.observationDays}일 · 성장 추이는 서로 다른 날짜의 관측이 더 필요해요.`
-                                : !trend.comparisonReady
-                                    ? `관측 ${trend.observationDays}일 · 또래 비교는 3일 관측과 비교 가능한 4포트가 필요해요.`
-                                    : "YOLO 검출 박스 면적 기준의 참고 추이예요."}
+                                : trend.reference.ready
+                                    ? `성장 속도는 같은 품종 재배 기록 ${trend.reference.plantCount}개가 같은 시기에 보인 속도와 견줬어요.`
+                                    : `관측 ${trend.observationDays}일 · 속도 비교는 같은 시기의 같은 품종 재배 기록 3개가 필요해요.`}
                     </p>
+                    {trend?.viewChangedDay != null && (
+                        <p className="mt-1 text-caption text-gray-500">
+                            {trend.viewChangedDay}일차에 포트 위치가 바뀌어, 그 뒤에 찍힌 사진끼리만 견줘요.
+                        </p>
+                    )}
                 </>
             )}
         </div>
     );
 }
 
-// 현재 관측 요약 (크기/질병/순위/격차)
+
+const COMPARISON_COLOR = { faster: "text-brand", similar: "text-gray-700", slower: "text-amber-700" };
+
+// 현재 관측 요약 (크기/질병/이 포트의 과거 대비 크기/같은 시기 다른 재배와의 속도 비교)
 function PortObservation({ plant, trend, error }) {
     if (!plant) {
         return <div className="rounded-xl bg-gray-50 p-4 flex items-center justify-center text-caption text-gray-500">데이터 없음</div>;
     }
     const latest = trend?.latestRatio;
-    const rank = trend?.rank, portCount = trend?.portCount, gap = trend?.gapPercent;
+    const sizeChange = trend?.sizeChange;
+    const comparison = trend?.reference;
     const diseased = isDiseased(plant.diseaseResult);
     const items = [
         ["YOLO 검출 면적", error ? "조회 실패" : latest != null ? `화면의 ${(latest * 100).toFixed(1)}%` : "관측 없음", "text-gray-700"],
         ["질병 검출", diseased ? plant.diseaseResult : "판단 대기", diseased ? "text-red-600" : "text-gray-500"],
-        ["또래 순위", rank != null && portCount ? `${portCount}중 ${rank}위` : "비교 대기", "text-gray-700"],
-        ["성장 격차", gap != null ? `${gap > 0 ? "+" : ""}${gap}%` : "비교 대기",
-            gap == null ? "text-gray-500" : gap >= 5 ? "text-brand" : gap <= -15 ? "text-red-600" : gap < 0 ? "text-amber-700" : "text-gray-500"],
+        ["과거 대비 크기", describeSizeChange(sizeChange),
+            !sizeChange?.ready ? "text-gray-500"
+                : sizeChange.changePercent >= SAME_SIZE_BAND_PERCENT ? "text-brand" : "text-amber-700"],
+        ["같은 품종·시기 성장 속도", describeComparison(comparison),
+            comparison?.ready ? COMPARISON_COLOR[comparison.verdict] : "text-gray-500"],
     ];
     return (
         <div className="rounded-xl bg-gray-50 p-4 grid grid-cols-2 gap-2 content-start">
@@ -882,11 +341,15 @@ function PortProblemBlock({ plant, trend, serialNumber, speciesId, speciesName, 
                     speciesName: speciesName ?? null,
                     portIndex: plant.portIndex,
                     daysSincePlanted: daysSincePlanted ?? null,
-                    plantStage: plant.plantStage ?? null,
-                    gapPercent: trend?.gapPercent ?? null,
-                    rank: trend?.rank ?? null,
-                    portCount: trend?.portCount ?? null,
-                    currentSizePercent: trend?.comparisonReady && trend?.latestRatio != null
+                    plantStage: plant.stageName ?? null,
+                    sizeChangeDays: trend?.sizeChange?.ready ? trend.sizeChange.days : null,
+                    sizeChangePercent: trend?.sizeChange?.ready ? Math.round(trend.sizeChange.changePercent) : null,
+                    speedVerdict: trend?.reference?.ready ? trend.reference.verdict : null,
+                    ownRatePerDay: trend?.reference?.ready && trend.growthRate.ready
+                        ? Math.round(trend.growthRate.ratePerDay) : null,
+                    referenceRatePerDay: trend?.reference?.ready ? Math.round(trend.reference.ratePerDay) : null,
+                    referencePlantCount: trend?.reference?.ready ? trend.reference.plantCount : null,
+                    currentSizePercent: trend?.latestRatio != null
                         ? Math.round(trend.latestRatio * 1000) / 10 : null,
                     diseaseResult: plant.diseaseResult ?? null,
                 }),
@@ -965,10 +428,8 @@ function MonitoringPage() {
     const [selectedPort, setSelectedPort] = useState(0);
     const [prediction, setPrediction] = useState(null);
     const [aiAdvice, setAiAdvice] = useState(null);
-    const [aiAnalysis, setAiAnalysis] = useState(null);
 
     // ── 분리된 로딩 상태 ───────────────────────────────────────
-    const [visionAiLoading, setVisionAiLoading] = useState(false);
     const [adviceAiLoading, setAdviceAiLoading] = useState(false);
 
     const PORT_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7];
@@ -998,14 +459,9 @@ function MonitoringPage() {
         markMonitoringPerformance(perfRunId, "monitoring_route_rendered");
     }, [serialNumber, perfRunId]);
 
-    // ── Vision AI 분석만 새로고침 (점수 + 분석 섹션) ─────────────
-    const handleRefreshVision = useCallback(async (deviceData, plantData) => {
-        if (!deviceData) return;
-        setVisionAiLoading(true);
-        const advice = await fetchAiData(deviceData, plantData, sensorData);
-        setAiAnalysis(parseAiAnalysis(advice));
-        setVisionAiLoading(false);
-    }, [sensorData]);
+    // ── 포트 관측 새로고침 (성장 추이와 속도 비교를 다시 불러온다) ──
+    const [growthTrendRefresh, setGrowthTrendRefresh] = useState(0);
+    const handleRefreshObservation = useCallback(() => setGrowthTrendRefresh(count => count + 1), []);
 
     // ── AI 재배 조언만 새로고침 (조언 텍스트) ────────────────────
     const handleRefreshAdvice = useCallback(async (deviceData, plantData) => {
@@ -1103,29 +559,21 @@ function MonitoringPage() {
         const plant = device.plants?.find(item => item.portIndex === selectedPort);
         if (!plant) {
             setAiAdvice(null);
-            setAiAnalysis(null);
-            setVisionAiLoading(false);
             setAdviceAiLoading(false);
             return;
         }
         let active = true;
         setAiAdvice(null);
-        setAiAnalysis(null);
-        setVisionAiLoading(true);
         setAdviceAiLoading(true);
         measureMonitoringApi(perfRunId, "ai_advice", () => fetchAiData(device, plant, sensorData))
             .then(advice => {
                 if (!active) return;
                 setAiAdvice(advice);
-                setAiAnalysis(parseAiAnalysis(advice));
                 markMonitoringPerformance(perfRunId, "ai_advice_settled", { hasAdvice: Boolean(advice) });
             })
             .catch(error => { if (active) console.error("[AI advice]", error); })
             .finally(() => {
-                if (active) {
-                    setVisionAiLoading(false);
-                    setAdviceAiLoading(false);
-                }
+                if (active) setAdviceAiLoading(false);
             });
         return () => { active = false; };
     }, [device, selectedPort, perfRunId, sensorData.temperature !== null]);
@@ -1136,26 +584,29 @@ function MonitoringPage() {
         setPrediction(null);
         if (!device) return;
         const plant = device.plants?.find(p => p.portIndex === selectedPort);
-        if (!plant) {
+        if (!plant || !isLettucePlant(plant)) {
             setPrediction(null);
             setPredictionSettled(true);
-            markMonitoringPerformance(perfRunId, "prediction_settled", { hasPlant: false });
+            markMonitoringPerformance(perfRunId, "prediction_settled", { hasPlant: Boolean(plant), supported: false });
             return;
         }
         setPredictionSettled(false);
-        measureMonitoringApi(perfRunId, "prediction", () => getLatestPredictionApi(plant.id))
+        const fetchPrediction = () => measureMonitoringApi(perfRunId, "prediction", () =>
+            getLatestHarvestPredictionApi(plant.id))
             .then(res => {
                 if (!cancelled) setPrediction(res.data ? { plantId: plant.id, ...res.data } : null);
             })
             .catch(() => {
-                if (!cancelled) setPrediction(null);
+                if (!cancelled) setPrediction({ plantId: plant.id, status: "LOAD_ERROR" });
             })
             .finally(() => {
                 if (cancelled) return;
                 setPredictionSettled(true);
                 markMonitoringPerformance(perfRunId, "prediction_settled", { hasPlant: true });
             });
-        return () => { cancelled = true; };
+        fetchPrediction();
+        const predictionTimer = setInterval(fetchPrediction, 60000);
+        return () => { cancelled = true; clearInterval(predictionTimer); };
     }, [device, selectedPort, perfRunId]);
 
     // ── 3. AWS 환경에서는 최신 센서값을 주기적으로 조회한다.
@@ -1230,7 +681,6 @@ function MonitoringPage() {
             device &&
             noticesSettled &&
             predictionSettled &&
-            !visionAiLoading &&
             !adviceAiLoading &&
             !performanceFinishedRef.current
         ) {
@@ -1247,7 +697,6 @@ function MonitoringPage() {
         device,
         noticesSettled,
         predictionSettled,
-        visionAiLoading,
         adviceAiLoading,
         notices.length,
         prediction,
@@ -1341,7 +790,7 @@ function MonitoringPage() {
         }
     };
 
-    // 선택 포트의 성장 추이(관측 크기) + 또래 비교. 성장추이 카드/현재관측/문제분석이 공유.
+    // 선택 포트의 성장 추이(관측 크기) + 같은 시기 다른 재배와의 속도 비교. 성장추이 카드/현재관측/문제분석이 공유.
     const [growthTrend, setGrowthTrend] = useState(null);
     const [growthTrendLoading, setGrowthTrendLoading] = useState(false);
     const [growthTrendError, setGrowthTrendError] = useState(false);
@@ -1357,7 +806,7 @@ function MonitoringPage() {
             .catch(() => { if (alive) { setGrowthTrend(null); setGrowthTrendError(true); } })
             .finally(() => { if (alive) setGrowthTrendLoading(false); });
         return () => { alive = false; };
-    }, [serialNumber, selectedPort, device]);
+    }, [serialNumber, selectedPort, device, growthTrendRefresh]);
 
     if (loading) return (
         <div className="flex items-center justify-center min-h-screen">
@@ -1771,11 +1220,11 @@ function MonitoringPage() {
                                     <h2 className="text-body2 font-bold text-gray-700">포트 건강 진단</h2>
                                 </div>
                                 <button
-                                    onClick={() => handleRefreshVision(device, selectedPlant)}
-                                    disabled={visionAiLoading}
+                                    onClick={handleRefreshObservation}
+                                    disabled={growthTrendLoading}
                                     className="text-caption text-brand hover:text-brand-deep font-medium disabled:text-gray-300 transition-colors"
                                 >
-                                    {visionAiLoading ? "분석 중..." : "↻ 새로고침"}
+                                    {growthTrendLoading ? "불러오는 중..." : "↻ 새로고침"}
                                 </button>
                             </div>
 
@@ -1810,7 +1259,7 @@ function MonitoringPage() {
                                 <div>
                                     <p className="text-caption font-bold text-gray-700">{portHealth.grade}</p>
                                     <p className="text-caption text-gray-500 mt-1">
-                                        {evidencedTrend?.comparisonReady || isDiseased(selectedPlant?.diseaseResult)
+                                        {evidencedTrend?.reference?.ready || isDiseased(selectedPlant?.diseaseResult)
                                             ? "기기 공통 센서 + 확인된 포트 관측"
                                             : "재배 환경 점수 · 기기 공통 센서 기반"}
                                     </p>
@@ -1822,7 +1271,7 @@ function MonitoringPage() {
                                 </div>
                             </div>
 
-                            {visionAiLoading ? (
+                            {growthTrendLoading ? (
                                 <div className="flex flex-col gap-2">
                                     {["재배 환경 상태", "환경 위험도"].map(label => (
                                         <div key={label} className="flex justify-between items-center py-1">
@@ -1835,7 +1284,7 @@ function MonitoringPage() {
                                 <div className="flex flex-col gap-1 text-caption">
                                     <div className="flex justify-between items-center py-1 border-b border-gray-50">
                                         <span className="text-gray-500">
-                                            {evidencedTrend?.comparisonReady ? "환경·성장 관측 상태" : "재배 환경 상태"}
+                                            {evidencedTrend?.reference?.ready ? "환경·성장 관측 상태" : "재배 환경 상태"}
                                         </span>
                                         <span className={`font-medium ${
                                             portHealth.growthStatus === "정상" ? "text-brand" :
@@ -1861,10 +1310,9 @@ function MonitoringPage() {
                                         {growthTrendError
                                             ? "YOLO 관측 데이터를 불러오지 못했어요."
                                             : evidencedTrend?.observationDays
-                                            ? `YOLO 크기 관측 ${evidencedTrend.observationDays}일 · ${evidencedTrend.comparisonReady ? "또래 비교 가능" : "성장 비교 대기"}`
+                                            ? `YOLO 크기 관측 ${evidencedTrend.observationDays}일 · ${evidencedTrend.reference?.ready ? "속도 비교 가능" : "속도 비교 대기"}`
                                             : "사진의 식물을 YOLO가 아직 크기 관측으로 기록하지 못했어요."}
                                     </p>
-                                    {aiAnalysis?.growth && <GrowthSummary text={aiAnalysis.growth} />}
                                 </div>
                             )}
                             </>
@@ -1877,14 +1325,12 @@ function MonitoringPage() {
                         <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm">
                             <div className="mb-4">
                                 <h2 className="text-body2 font-bold text-gray-700">📈 생육 상세</h2>
-                                <p className="mt-1 text-caption text-gray-500">단계 기록·다음 예상 시점 · 이 포트의 성장 추이와 문제 분석.</p>
+                                <p className="mt-1 text-caption text-gray-500">단계 기록·수확기 예상 · 이 포트의 성장 추이와 문제 분석.</p>
                             </div>
 
-                            <NextStageReadout
+                            <HarvestForecastSection
                                 selectedPlant={selectedPlant}
                                 prediction={prediction}
-                                stageNames={stageNames}
-                                stageDurationDays={selectedPlant?.stageDurationDays || []}
                             />
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
@@ -1892,7 +1338,8 @@ function MonitoringPage() {
                                 <PortObservation plant={selectedPlant} trend={evidencedTrend} error={growthTrendError} />
                             </div>
 
-                            <PortProblemBlock plant={selectedPlant} trend={evidencedTrend}
+                            {/* 포트를 바꾸면 이전 포트의 분석 결과가 남지 않게 식물별로 새로 만든다 */}
+                            <PortProblemBlock key={selectedPlant?.id ?? "empty"} plant={selectedPlant} trend={evidencedTrend}
                                 serialNumber={serialNumber} speciesId={selectedPlant?.speciesId ?? null}
                                 speciesName={selectedSpeciesName} daysSincePlanted={daysSincePlanted} />
                         </div>
