@@ -276,15 +276,6 @@ function SelectPlantModal({ serialNumber, portIndex, existingPlants = [], onClos
                                             </div>
                                         </div>
                                     )}
-                                    {/* ✅ 이 품종의 생육 단계 목록 표시 */}
-                                    {selected.stageNames && selected.stageNames.length > 0 && (
-                                        <div className="bg-gray-50 rounded-lg p-2.5 text-center">
-                                            <div className="text-xs text-gray-400">🌾 생육 단계 ({selected.stageNames.length}단계)</div>
-                                            <div className="text-xs font-medium text-gray-700 mt-0.5">
-                                                {selected.stageNames.join(" → ")}
-                                            </div>
-                                        </div>
-                                    )}
                                     {selected.aiPromptGuideline && (
                                         <p className="text-caption text-gray-500  text-center">{selected.aiPromptGuideline}</p>
                                     )}
