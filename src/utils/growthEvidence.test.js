@@ -1,8 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { prepareGrowthTrend, growthComparison, describeSizeChange, describeComparison } from "./growthEvidence.js";
+import { prepareGrowthTrend, growthComparison, describeSizeChange, describeComparison, currentSizeRatio } from "./growthEvidence.js";
 
 const point = day => ({ date: `2026-09-${day}`, elapsedDay: day, value: 0.02 });
+
+test("current size uses the combined box and green result only", () => {
+    assert.equal(currentSizeRatio({ measurement: "box_green", latestRatio: 0.42 }), 0.42);
+    assert.ok(Math.abs(currentSizeRatio({ measurement: "box", latestRatio: 0.8,
+        latestBoxRatio: 0.8, latestGreenRatio: 0.2 }) - (0.8 ** 0.7 * 0.2 ** 0.3)) < 1e-12);
+    assert.equal(currentSizeRatio({ measurement: "box", latestRatio: 0.8,
+        latestBoxRatio: 0.8, latestGreenRatio: null }), null);
+});
 
 test("one day and two detected ports cannot create a growth gap", () => {
     const prepared = prepareGrowthTrend({
@@ -18,10 +26,10 @@ test("one day and two detected ports cannot create a growth gap", () => {
     assert.equal(prepared.latestRatio, 0.0094);
 });
 
-test("three distinct days and four comparable ports allow a comparison", () => {
+test("three distinct days and one other port allow a same-age comparison", () => {
     const points = [point(26), point(27), point(28)];
     const prepared = prepareGrowthTrend({
-        points, peerPoints: points, rank: 2, portCount: 4, gapPercent: -9.5,
+        points, peerPoints: points, rank: 2, portCount: 2, gapPercent: -9.5,
     });
     assert.equal(prepared.trendReady, true);
     assert.equal(prepared.comparisonReady, true);
@@ -37,7 +45,7 @@ test("repeated photos on one day and missing comparisons stay pending", () => {
     assert.equal(duplicateDay.comparisonReady, false);
 
     const fewPeers = prepareGrowthTrend({
-        points: [point(26), point(27), point(28)], rank: 1, portCount: 2, gapPercent: 25,
+        points: [point(26), point(27), point(28)], rank: 1, portCount: 1, gapPercent: 25,
     });
     assert.equal(fewPeers.trendReady, true);
     assert.equal(fewPeers.comparisonReady, false);
@@ -82,6 +90,17 @@ test("ports are compared by growth speed at the same age, not by size", () => {
     assert.equal(describeComparison(withOwnRate.reference), "비슷함");
 });
 
+test("one historical port supports the same-age speed judgement", () => {
+    const preview = prepareGrowthTrend({
+        points: [point(6), point(7), point(8)],
+        reference: { ready: true, ratePerDay: 15, plantCount: 1, portIndices: [6], verdict: "slower" },
+    });
+    assert.equal(preview.reference.ready, true);
+    assert.deepEqual(preview.reference.portIndices, [6]);
+    assert.equal(describeComparison(preview.reference), "더 느림");
+    assert.deepEqual(growthComparison(preview), { verdict: "slower", behind: true });
+});
+
 test("a size gap alone never marks a port as behind", () => {
     const points = [point(26), point(27), point(28)];
     const sizeOnly = prepareGrowthTrend({ points, peerPoints: points, rank: 4, portCount: 4, gapPercent: -40 });
@@ -112,4 +131,19 @@ test("a port is compared with its own past by size", () => {
     assert.equal(describeSizeChange(prepareGrowthTrend({ points: [point(28)], sizeChange: { ready: false } }).sizeChange), "관측 대기");
     assert.equal(describeSizeChange(prepareGrowthTrend({ points: [point(28)] }).sizeChange), "관측 대기");
     assert.equal(describeSizeChange(undefined), "관측 대기");
+});
+
+test("combined evidence and a clipped minimum remain explicit", () => {
+    const trend = prepareGrowthTrend({
+        points: [point(27), { ...point(28), lowerBound: true }],
+        latestRatio: 0.55, latestBoxRatio: 0.85, latestGreenRatio: 0.25,
+        latestLowerBound: true, measurement: "box_green",
+        sizeChange: { ready: true, days: 1, changePercent: 18.6, lowerBound: true },
+    });
+
+    assert.equal(trend.measurement, "box_green");
+    assert.equal(trend.latestBoxRatio, 0.85);
+    assert.equal(trend.latestGreenRatio, 0.25);
+    assert.equal(trend.latestLowerBound, true);
+    assert.equal(describeSizeChange(trend.sizeChange), "1일 전보다 최소 +19%");
 });

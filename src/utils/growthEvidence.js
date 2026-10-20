@@ -1,7 +1,8 @@
 // A single YOLO box is an observation, not a growth trend or a fair peer comparison.
 export const MIN_TREND_DAYS = 2;
 export const MIN_COMPARISON_DAYS = 3;
-export const MIN_COMPARISON_PORTS = 4;
+export const MIN_COMPARISON_PORTS = 2;
+export const MIN_HEALTH_REFERENCE_PLANTS = 1;
 
 const RATE_STATUSES = new Set(["growing", "flat", "down"]);
 
@@ -23,8 +24,9 @@ function prepareGrowthRate(rate) {
 function prepareSizeChange(change) {
     const ready = change?.ready === true && Number.isFinite(change.changePercent) && Number.isFinite(change.days);
     return ready
-        ? { ready: true, days: change.days, changePercent: change.changePercent }
-        : { ready: false, days: null, changePercent: null };
+        ? { ready: true, days: change.days, changePercent: change.changePercent,
+            lowerBound: change.lowerBound === true }
+        : { ready: false, days: null, changePercent: null, lowerBound: false };
 }
 
 // 박스 면적은 사진마다 흔들리므로 이 안쪽의 변화는 '비슷'으로 본다.
@@ -34,6 +36,7 @@ export const SAME_SIZE_BAND_PERCENT = 3;
 export function describeSizeChange(change) {
     if (!change?.ready) return "관측 대기";
     const rounded = Math.round(change.changePercent);
+    if (change.lowerBound) return `${change.days}일 전보다 최소 +${rounded}%`;
     if (Math.abs(rounded) < SAME_SIZE_BAND_PERCENT) return `${change.days}일 전과 비슷`;
     return `${change.days}일 전보다 약 ${rounded > 0 ? "+" : ""}${rounded}%`;
 }
@@ -45,18 +48,22 @@ const VERDICT_LABEL = { faster: "더 빠름", similar: "비슷함", slower: "더
 function prepareReference(reference) {
     const ready = reference?.ready === true && reference.verdict in VERDICT_LABEL
         && Number.isFinite(reference.ratePerDay);
-    if (!ready) return { ready: false, verdict: null, ratePerDay: null, plantCount: null };
+    if (!ready) return { ready: false, verdict: null, ratePerDay: null, plantCount: null, portIndices: [] };
     return {
         ready: true,
         verdict: reference.verdict,
         ratePerDay: reference.ratePerDay,
         plantCount: reference.plantCount ?? null,
+        portIndices: Array.isArray(reference.portIndices)
+            ? reference.portIndices.filter(index => Number.isInteger(index) && index >= 0) : [],
     };
 }
 
 // 포트 상태 판정에 쓰는 비교 결과. behind: 같은 시기의 다른 재배보다 뚜렷이 느리게 자란다.
 export function growthComparison(trend) {
-    const verdict = trend?.reference?.ready ? trend.reference.verdict : null;
+    const verdict = trend?.reference?.ready
+        && Number(trend.reference.plantCount) >= MIN_HEALTH_REFERENCE_PLANTS
+        ? trend.reference.verdict : null;
     return { verdict, behind: verdict === "slower" };
 }
 
@@ -64,6 +71,17 @@ export function growthComparison(trend) {
 export function describeComparison(reference) {
     if (!reference?.ready) return "비교 대기";
     return VERDICT_LABEL[reference.verdict];
+}
+
+export function currentSizeRatio(trend) {
+    if (trend?.measurement === "box_green" && Number.isFinite(trend.latestRatio)) {
+        return trend.latestRatio;
+    }
+    const box = trend?.latestBoxRatio;
+    const green = trend?.latestGreenRatio;
+    if (!Number.isFinite(box) || box <= 0 || box > 1
+        || !Number.isFinite(green) || green <= 0 || green > box + 0.01) return null;
+    return box ** 0.7 * green ** 0.3;
 }
 
 export function prepareGrowthTrend(trend) {
@@ -92,6 +110,10 @@ export function prepareGrowthTrend(trend) {
         reference: prepareReference(trend.reference),
         // 포트를 옮겨 화면에 찍히는 자리가 마지막으로 바뀐 경과일. 크기와 속도는 그 뒤 사진끼리만 견준다.
         viewChangedDay: Number.isFinite(trend.viewChangedDay) ? trend.viewChangedDay : null,
+        measurement: trend.measurement === "box_green" ? "box_green" : "box",
+        latestBoxRatio: Number.isFinite(trend.latestBoxRatio) ? trend.latestBoxRatio : trend.latestRatio ?? null,
+        latestGreenRatio: Number.isFinite(trend.latestGreenRatio) ? trend.latestGreenRatio : null,
+        latestLowerBound: trend.latestLowerBound === true,
         observationDays,
         trendReady,
         comparisonReady,

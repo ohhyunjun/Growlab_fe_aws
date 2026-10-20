@@ -31,7 +31,7 @@ function NotificationPage() {
     useEffect(() => {
         if (!token) { navigate("/login"); return; }
         fetchNotices();
-    }, []);
+    }, [navigate, token]);
 
     const fetchNotices = async () => {
         setLoading(true);

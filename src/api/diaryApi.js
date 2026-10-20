@@ -1,7 +1,8 @@
 import axios from "axios";
-import { API_BASE } from "./config";
+import { API_BASE as ROOT_API_BASE } from "./config";
 
-const url = serialNumber => `${API_BASE}/devices/${encodeURIComponent(serialNumber)}/diaries`;
+const API_BASE = `${ROOT_API_BASE}/devices`;
+const url = serialNumber => `${API_BASE}/${encodeURIComponent(serialNumber)}/diaries`;
 const authHeader = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
 
 export const getDiariesApi = serialNumber => axios.get(url(serialNumber), authHeader());

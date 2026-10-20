@@ -1,11 +1,14 @@
 import axios from "axios";
-import { API_BASE } from "./config";
+import { API_BASE as ROOT_API_BASE } from "./config";
+
+const API_BASE = ROOT_API_BASE;
 
 const authHeader = () => ({
     headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
 });
 
 export const getAllSpeciesApi = () => axios.get(`${API_BASE}/species`, authHeader());
+export const createPlantApi = (data) => axios.post(`${API_BASE}/plants`, data, authHeader());
 
 // ────────────────────────────────
 // ✅ 관리자 전용 API (ROLE_ADMIN 필요)

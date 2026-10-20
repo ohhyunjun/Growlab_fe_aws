@@ -16,7 +16,7 @@ import {
 } from "../../utils/monitoringPerformance";
 import { resolveRanges, scoreSensor } from "../../utils/sensorRange";
 import { deviceSensorRanges, sharedSensorStatus } from "../../utils/sharedEnvironment";
-import { prepareGrowthTrend, growthComparison, describeSizeChange, describeComparison, SAME_SIZE_BAND_PERCENT } from "../../utils/growthEvidence";
+import { prepareGrowthTrend, growthComparison, describeSizeChange, describeComparison, currentSizeRatio, SAME_SIZE_BAND_PERCENT } from "../../utils/growthEvidence";
 import { withoutGrowthSection } from "../../utils/aiAdvice";
 
 const SPECIES_EMOJI = {
@@ -161,7 +161,6 @@ const calcPortHealth = (base, plant, trend) => {
     return { portDataAvailable: true, score, grade, growthStatus, diseaseRisk, issues };
 };
 
-// ── 생육 타임라인 차트 ────────────────────────────────────────
 function EmptyTimeline({ children }) {
     return (
         <div className="min-h-44 rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 flex items-center justify-center px-4 text-center text-body2 text-gray-500">
@@ -180,22 +179,12 @@ const isDiseased = (label) => {
 
 const HEALTH_COLOR = { good: "#66A368", warn: "#f59e0b", bad: "#ef4444", pending: "#A3A3A3", empty: "#D4D4D4" };
 
-// 관측 근거가 없는 포트를 정상(초록)으로 표시하지 않는다.
-const portDotHealth = (plant) => {
+// 서버가 한 번의 성장 추이 응답으로 계산한 전체 포트의 크기·속도 상태를 표시한다.
+const resolvePortHealth = (plant, serverHealth) => {
     if (!plant) return "empty";
     if (isDiseased(plant.diseaseResult)) return "bad";
-    return "pending";
+    return ["good", "warn", "bad", "pending"].includes(serverHealth) ? serverHealth : "pending";
 };
-
-const resolvePortHealth = (plant, trend) => {
-    if (!plant) return "empty";
-    if (isDiseased(plant.diseaseResult)) return "bad";
-    const { verdict, behind } = growthComparison(trend);
-    if (!verdict) return "pending";
-    return behind ? "warn" : "good";
-};
-
-// 관측 단계와 별개로 수확기 도달일 하나만 예측한다.
 // 관측된 생육 단계는 그대로 표시하지만, 날짜 예측은 수확기에만 제공한다.
 function HarvestForecastSection({ selectedPlant, prediction }) {
     if (!selectedPlant) return <EmptyTimeline>이 포트에 식물이 없어요</EmptyTimeline>;
@@ -241,7 +230,8 @@ function GrowthTrendSvg({ points, peerPoints, color }) {
         <svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="block">
             {peerPath && <path d={peerPath} fill="none" stroke="#737373" strokeWidth="1.3" strokeDasharray="3 3" opacity="0.7" />}
             <path d={selfPath} fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-            {lastV != null && <circle cx={(lastIdx * st).toFixed(1)} cy={Y(lastV).toFixed(1)} r="3" fill={color} />}
+            {lastV != null && <circle cx={(lastIdx * st).toFixed(1)} cy={Y(lastV).toFixed(1)} r="3"
+                fill={points[lastIdx]?.lowerBound ? "none" : color} stroke={color} strokeWidth="1.5" />}
         </svg>
     );
 }
@@ -252,7 +242,7 @@ function GrowthTrendCard({ trend, loading, error, color }) {
     return (
         <div className="rounded-xl bg-gray-50 p-4">
             <div className="flex items-center justify-between mb-1">
-                <span className="text-caption font-bold text-gray-500">성장 추이 <span className="text-caption font-normal text-gray-500">관측</span></span>
+                <span className="text-caption font-bold text-gray-500">성장 추이</span>
             </div>
             {loading ? (
                 <div className="h-12 flex items-center text-caption text-gray-500">불러오는 중...</div>
@@ -260,27 +250,6 @@ function GrowthTrendCard({ trend, loading, error, color }) {
                 <div className="h-12 flex items-center text-caption text-red-600">관측 데이터를 불러오지 못했어요.</div>
             ) : (
                 <GrowthTrendSvg points={points} color={color} />
-            )}
-            {!loading && !error && (
-                <>
-                    <div className="flex items-center gap-3 mt-1 text-caption text-gray-500">
-                        {points.length > 0 && <span className="flex items-center gap-1"><span className="w-3 h-1 rounded" style={{ background: color }} />이 포트</span>}
-                    </div>
-                    <p className="mt-2 text-caption text-gray-500">
-                        {trend?.observationDays === 0 || !trend
-                            ? "YOLO 크기 관측이 없습니다. 사진에서 자란 식물을 놓쳤을 수도 있어요."
-                            : !trend.trendReady
-                                ? `관측 ${trend.observationDays}일 · 성장 추이는 서로 다른 날짜의 관측이 더 필요해요.`
-                                : trend.reference.ready
-                                    ? `성장 속도는 같은 품종 재배 기록 ${trend.reference.plantCount}개가 같은 시기에 보인 속도와 견줬어요.`
-                                    : `관측 ${trend.observationDays}일 · 속도 비교는 같은 시기의 같은 품종 재배 기록 3개가 필요해요.`}
-                    </p>
-                    {trend?.viewChangedDay != null && (
-                        <p className="mt-1 text-caption text-gray-500">
-                            {trend.viewChangedDay}일차에 포트 위치가 바뀌어, 그 뒤에 찍힌 사진끼리만 견줘요.
-                        </p>
-                    )}
-                </>
             )}
         </div>
     );
@@ -294,16 +263,17 @@ function PortObservation({ plant, trend, error }) {
     if (!plant) {
         return <div className="rounded-xl bg-gray-50 p-4 flex items-center justify-center text-caption text-gray-500">데이터 없음</div>;
     }
-    const latest = trend?.latestRatio;
+    const latest = currentSizeRatio(trend);
     const sizeChange = trend?.sizeChange;
     const comparison = trend?.reference;
     const diseased = isDiseased(plant.diseaseResult);
     const items = [
-        ["YOLO 검출 면적", error ? "조회 실패" : latest != null ? `화면의 ${(latest * 100).toFixed(1)}%` : "관측 없음", "text-gray-700"],
+        ["현재 크기 지표", error ? "조회 실패" : latest != null
+            ? `${trend?.latestLowerBound ? "최소 " : ""}${(latest * 100).toFixed(1)}%` : trend ? "계산 대기" : "관측 없음", "text-gray-700"],
         ["질병 검출", diseased ? plant.diseaseResult : "판단 대기", diseased ? "text-red-600" : "text-gray-500"],
         ["과거 대비 크기", describeSizeChange(sizeChange),
             !sizeChange?.ready ? "text-gray-500"
-                : sizeChange.changePercent >= SAME_SIZE_BAND_PERCENT ? "text-brand" : "text-amber-700"],
+                : sizeChange.changePercent >= -SAME_SIZE_BAND_PERCENT ? "text-brand" : "text-amber-700"],
         ["같은 품종·시기 성장 속도", describeComparison(comparison),
             comparison?.ready ? COMPARISON_COLOR[comparison.verdict] : "text-gray-500"],
     ];
@@ -315,7 +285,6 @@ function PortObservation({ plant, trend, error }) {
                     <div className={`text-body2 font-bold ${c}`}>{v}</div>
                 </div>
             ))}
-            <p className="col-span-2 text-caption text-gray-500">검출 박스 면적은 식물 전체 크기와 다를 수 있어요.</p>
         </div>
     );
 }
@@ -332,6 +301,7 @@ function PortProblemBlock({ plant, trend, serialNumber, speciesId, speciesName, 
         setLlmLoading(true); setLlmError(false);
         try {
             const token = localStorage.getItem("token");
+            const currentSize = currentSizeRatio(trend);
             const res = await fetch(`${API_BASE}/ai/port-diagnosis`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -349,8 +319,8 @@ function PortProblemBlock({ plant, trend, serialNumber, speciesId, speciesName, 
                         ? Math.round(trend.growthRate.ratePerDay) : null,
                     referenceRatePerDay: trend?.reference?.ready ? Math.round(trend.reference.ratePerDay) : null,
                     referencePlantCount: trend?.reference?.ready ? trend.reference.plantCount : null,
-                    currentSizePercent: trend?.latestRatio != null
-                        ? Math.round(trend.latestRatio * 1000) / 10 : null,
+                    currentSizePercent: currentSize != null
+                        ? Math.round(currentSize * 1000) / 10 : null,
                     diseaseResult: plant.diseaseResult ?? null,
                 }),
             });
@@ -374,9 +344,6 @@ function PortProblemBlock({ plant, trend, serialNumber, speciesId, speciesName, 
                 </button>
             </div>
 
-            {!llm && !llmLoading && !llmError && (
-                <p className="mt-2 text-caption text-gray-500">센서와 등록된 생육 단계를 기준으로 분석합니다. 영상 관측은 충분히 쌓였을 때만 참고해요.</p>
-            )}
             {llmLoading && <p className="mt-2 text-caption text-gray-500">AI가 분석 중입니다…</p>}
             {llmError && <p className="mt-2 text-caption text-red-600">분석을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</p>}
             {llm && (
@@ -409,9 +376,11 @@ function MonitoringPage() {
     const [sensorData, setSensorData] = useState(() => {
         try {
             const saved = sessionStorage.getItem(getSensorKey(serialNumber));
-            return saved ? JSON.parse(saved) : emptySensorData();
+            return saved ? JSON.parse(saved) : {
+                temperature: null, humidity: null, ph: null, tds: null, water_level_status: null,
+            };
         } catch {
-            return emptySensorData();
+            return { temperature: null, humidity: null, ph: null, tds: null, water_level_status: null };
         }
     });
 
@@ -587,7 +556,9 @@ function MonitoringPage() {
         if (!plant || !isLettucePlant(plant)) {
             setPrediction(null);
             setPredictionSettled(true);
-            markMonitoringPerformance(perfRunId, "prediction_settled", { hasPlant: Boolean(plant), supported: false });
+            markMonitoringPerformance(perfRunId, "prediction_settled", {
+                hasPlant: Boolean(plant), supported: false,
+            });
             return;
         }
         setPredictionSettled(false);
@@ -792,18 +763,35 @@ function MonitoringPage() {
 
     // 선택 포트의 성장 추이(관측 크기) + 같은 시기 다른 재배와의 속도 비교. 성장추이 카드/현재관측/문제분석이 공유.
     const [growthTrend, setGrowthTrend] = useState(null);
+    const [portHealthSnapshot, setPortHealthSnapshot] = useState(null);
     const [growthTrendLoading, setGrowthTrendLoading] = useState(false);
     const [growthTrendError, setGrowthTrendError] = useState(false);
     useEffect(() => {
-        const hasPlant = device?.plants?.some(p => p.portIndex === selectedPort);
-        if (!serialNumber || !hasPlant) { setGrowthTrend(null); setGrowthTrendError(false); return; }
+        // 빈 포트를 선택해도 서버의 전체 포트 상태를 받아 색상 점을 표시한다.
+        if (!serialNumber || !device) {
+            setGrowthTrend(null);
+            setGrowthTrendError(false);
+            setPortHealthSnapshot(null);
+            return;
+        }
         let alive = true;
         setGrowthTrend(null);
         setGrowthTrendError(false);
         setGrowthTrendLoading(true);
         getGrowthTrendApi(serialNumber, selectedPort)
-            .then(res => { if (alive) setGrowthTrend(res.data); })
-            .catch(() => { if (alive) { setGrowthTrend(null); setGrowthTrendError(true); } })
+            .then(res => {
+                if (!alive) return;
+                setGrowthTrend(res.data);
+                if (Array.isArray(res.data?.ports)) {
+                    setPortHealthSnapshot({
+                        serialNumber,
+                        byIndex: Object.fromEntries(res.data.ports.map(port => [port.portIndex, port.health])),
+                    });
+                } else {
+                    setPortHealthSnapshot(null);
+                }
+            })
+            .catch(() => { if (alive) { setGrowthTrend(null); setPortHealthSnapshot(null); setGrowthTrendError(true); } })
             .finally(() => { if (alive) setGrowthTrendLoading(false); });
         return () => { alive = false; };
     }, [serialNumber, selectedPort, device, growthTrendRefresh]);
@@ -843,8 +831,8 @@ function MonitoringPage() {
     const visionScore = calcVisionScore(sensorData, ranges);
     const evidencedTrend = prepareGrowthTrend(growthTrend?.portIndex === selectedPort ? growthTrend : null);
     const portHealth = calcPortHealth(visionScore, selectedPlant, evidencedTrend);
-
-    const selectedHealth = resolvePortHealth(selectedPlant, evidencedTrend);
+    const healthByPort = portHealthSnapshot?.serialNumber === serialNumber ? portHealthSnapshot.byIndex : {};
+    const selectedHealth = resolvePortHealth(selectedPlant, healthByPort[selectedPort]);
     const selectedHealthColor = HEALTH_COLOR[selectedHealth];
 
     return (
@@ -1137,10 +1125,7 @@ function MonitoringPage() {
                             {PORT_OPTIONS.map(port => {
                                 const portPlant = device.plants?.find(p => p.portIndex === port);
                                 const isPortOn = portStatus[port] === "1";
-                                // 서버의 포트 상태는 관측 1일/2포트 비교도 정상·주의로 계산하므로 사용하지 않는다.
-                                const dot = port === selectedPort
-                                    ? resolvePortHealth(portPlant, evidencedTrend)
-                                    : portDotHealth(portPlant);
+                                const dot = resolvePortHealth(portPlant, healthByPort[port]);
                                 return (
                                     <button key={port} onClick={() => setSelectedPort(port)}
                                         aria-label={`포트 ${port + 1}${isPortOn && portPlant ? " 사용 중" : ""}`}
@@ -1167,10 +1152,10 @@ function MonitoringPage() {
                         </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 pt-3 border-t border-gray-50 text-caption text-gray-500">
-                        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full" style={{ background: "#66A368" }} />비교 정상</span>
-                        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full" style={{ background: "#f59e0b" }} />비교 주의</span>
+                        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full" style={{ background: "#66A368" }} />크기·속도 정상</span>
+                        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full" style={{ background: "#f59e0b" }} />크기·속도 주의</span>
                         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full" style={{ background: "#ef4444" }} />이상(질병)</span>
-                        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full" style={{ background: "#A3A3A3" }} />영상 비교 대기</span>
+                        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full" style={{ background: "#A3A3A3" }} />관측 대기</span>
                         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full" style={{ background: "#D4D4D4" }} />빈 포트</span>
                     </div>
                 </div>
@@ -1205,7 +1190,6 @@ function MonitoringPage() {
                                             <span className="font-medium text-gray-700">{value}</span>
                                         </div>
                                     ))}
-                                    <p className="text-caption text-gray-500">수동 등록·변경된 단계일 수 있어요. YOLO가 확인한 단계와는 별개입니다.</p>
                                 </div>
                             ) : (
                                 <p className="text-caption text-gray-500 text-center py-2">이 포트에 식물이 없어요</p>
@@ -1258,11 +1242,6 @@ function MonitoringPage() {
                                 </div>
                                 <div>
                                     <p className="text-caption font-bold text-gray-700">{portHealth.grade}</p>
-                                    <p className="text-caption text-gray-500 mt-1">
-                                        {evidencedTrend?.reference?.ready || isDiseased(selectedPlant?.diseaseResult)
-                                            ? "기기 공통 센서 + 확인된 포트 관측"
-                                            : "재배 환경 점수 · 기기 공통 센서 기반"}
-                                    </p>
                                     {portHealth.issues.length > 0 && (
                                         <p className="text-caption text-amber-700 mt-1">
                                             ⚠ {portHealth.issues.slice(0, 2).join(", ")}
@@ -1306,13 +1285,6 @@ function MonitoringPage() {
                                             {portHealth.diseaseRisk}
                                         </span>
                                     </div>
-                                    <p className="text-caption text-gray-500">
-                                        {growthTrendError
-                                            ? "YOLO 관측 데이터를 불러오지 못했어요."
-                                            : evidencedTrend?.observationDays
-                                            ? `YOLO 크기 관측 ${evidencedTrend.observationDays}일 · ${evidencedTrend.reference?.ready ? "속도 비교 가능" : "속도 비교 대기"}`
-                                            : "사진의 식물을 YOLO가 아직 크기 관측으로 기록하지 못했어요."}
-                                    </p>
                                 </div>
                             )}
                             </>
@@ -1325,7 +1297,6 @@ function MonitoringPage() {
                         <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm">
                             <div className="mb-4">
                                 <h2 className="text-body2 font-bold text-gray-700">📈 생육 상세</h2>
-                                <p className="mt-1 text-caption text-gray-500">단계 기록·수확기 예상 · 이 포트의 성장 추이와 문제 분석.</p>
                             </div>
 
                             <HarvestForecastSection

@@ -1,7 +1,7 @@
 import axios from "axios";
-import { API_BASE as BASE_API_URL } from "./config";
+import { API_BASE as ROOT_API_BASE } from "./config";
 
-const API_BASE = `${BASE_API_URL}/admin/users`;
+const API_BASE = `${ROOT_API_BASE}/admin/users`;
 
 const authHeader = () => ({
     headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }

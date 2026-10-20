@@ -1,7 +1,7 @@
 import axios from "axios";
-import { API_BASE as BASE_API_URL } from "./config";
+import { API_BASE as ROOT_API_BASE } from "./config";
 
-const API_BASE = `${BASE_API_URL}/prices`;
+const API_BASE = `${ROOT_API_BASE}/prices`;
 
 /**
  * 최신 가격 조회 (소매 or 도매 1건)

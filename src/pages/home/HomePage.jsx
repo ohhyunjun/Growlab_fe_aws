@@ -12,10 +12,8 @@ import addIcon from "../../assets/icons/add.svg";
 import temperatureIcon from "../../assets/icons/temperature.svg";
 import humidityIcon from "../../assets/icons/humidity.svg";
 import deviceIcon from "../../assets/icons/device.svg";
-import closeIcon from "../../assets/icons/close.svg";
 import plusSmallIcon from "../../assets/icons/plus-small.svg";
-
-const ICONS = ["🍓", "🌿", "🌱", "🌻", "🍅", "🥬", "🌶️", "🌸"];
+import { DEVICE_ICONS, DEFAULT_DEVICE_ICON } from "../../assets/deviceIcons";
 
 const SORT_OPTIONS = [
     { key: "name",   label: "이름순" },
@@ -43,11 +41,55 @@ const SENSOR_STYLE = {
     bad:  { box: "border-error bg-error-bg",          label: "text-error-sub",    value: "text-error" },    // 범위 벗어남, 수위 부족
 };
 
+function DeviceMenu({ device, onDelete }) {
+    const [open, setOpen] = useState(false);
+    const ref = useRef(null);
+    const triggerRef = useRef(null);
+
+    useEffect(() => {
+        if (!open) return;
+        ref.current?.querySelector('[role="menuitem"]')?.focus();
+        const close = (event) => {
+            if (!ref.current?.contains(event.target)) setOpen(false);
+        };
+        document.addEventListener("pointerdown", close);
+        return () => document.removeEventListener("pointerdown", close);
+    }, [open]);
+
+    return (
+        <div ref={ref} className="relative shrink-0" onClick={event => event.stopPropagation()}
+            onKeyDown={event => {
+                if (event.key === "Escape") {
+                    event.stopPropagation();
+                    setOpen(false);
+                    triggerRef.current?.focus();
+                }
+            }}>
+            <button ref={triggerRef} type="button" aria-label={`${device.deviceNickname} 기기 메뉴`}
+                aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(value => !value)}
+                className="flex size-9 items-center justify-center rounded text-gray-600 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
+                </svg>
+            </button>
+            {open && (
+                <div role="menu" aria-label="기기 관리" className="absolute right-0 top-[calc(100%+6px)] z-20 overflow-hidden rounded bg-gray-200 shadow-sm">
+                    <button type="button" role="menuitem" onClick={() => {
+                        setOpen(false);
+                        triggerRef.current?.focus();
+                        onDelete(device.serialNumber);
+                    }} className="w-28 whitespace-nowrap px-4 py-2 text-left text-body1 font-medium text-gray-600 hover:bg-gray-400 hover:text-black focus-visible:bg-gray-400 focus-visible:text-black focus-visible:outline-none">
+                        기기 삭제
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
 function DeviceCard({ device, onDelete, onPortClick, onOpenMonitoring }) {
     const savedIconIndex = localStorage.getItem(`device_icon_${device.serialNumber}`);
-    const emoji = (savedIconIndex !== null && savedIconIndex !== undefined)
-        ? (ICONS[parseInt(savedIconIndex)] || "🌱")
-        : "🌱";
+    const selectedIcon = DEVICE_ICONS[Number.parseInt(savedIconIndex, 10)] || DEFAULT_DEVICE_ICON;
 
     const portStatus = device.portStatus || "00000000";
 
@@ -76,9 +118,7 @@ function DeviceCard({ device, onDelete, onPortClick, onOpenMonitoring }) {
         >
             {/* 기기 정보 */}
             <div className="flex items-start gap-4">
-                <div className="flex size-[100px] shrink-0 items-center justify-center rounded-lg border border-gray-200 text-[56px] leading-none" aria-hidden="true">
-                    {emoji}
-                </div>
+                <img src={selectedIcon.src} alt="" width="100" height="100" className="size-[100px] shrink-0 object-contain" />
                 <div className="flex min-w-0 flex-1 flex-col gap-3">
                     <p className="truncate text-h4 font-bold text-black">{device.deviceNickname}</p>
                     <p className="truncate text-body1 text-gray-400">{device.serialNumber}</p>
@@ -98,14 +138,7 @@ function DeviceCard({ device, onDelete, onPortClick, onOpenMonitoring }) {
                         <p className="py-1 text-caption text-gray-500">빈 포트를 눌러 식물을 추가하세요</p>
                     )}
                 </div>
-                <button
-                    type="button"
-                    aria-label="기기 삭제"
-                    onClick={(e) => { e.stopPropagation(); onDelete(device.serialNumber); }}
-                    className="shrink-0 rounded transition-colors hover:bg-gray-100"
-                >
-                    <img src={closeIcon} alt="" width="36" height="36" />
-                </button>
+                <DeviceMenu device={device} onDelete={onDelete} />
             </div>
 
             <div className="flex flex-col gap-5">
@@ -117,21 +150,23 @@ function DeviceCard({ device, onDelete, onPortClick, onOpenMonitoring }) {
                         const isOn = portStatus[index] === "1";
                         const portSpecies = portPlant?.species || portPlant?.speciesName;
                         return (
-                            <div
+                            <button
+                                type="button"
                                 key={index}
+                                aria-label={`P${index + 1} ${isOccupied ? portPlant.name || portSpecies : "식물 추가"}`}
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     onPortClick(device, index, isOccupied);
                                 }}
                                 className={`flex h-[68px] min-w-0 cursor-pointer select-none flex-col items-center justify-center gap-1 rounded-lg text-body2 font-medium transition-colors ${
                                     isOccupied
-                                        ? "border border-brand-bright bg-success-bg"
+                                        ? "bg-brand hover:bg-brand-deep"
                                         : "bg-gray-100 hover:bg-gray-200"
                                 }`}
                             >
-                                <span className={isOccupied ? "text-brand-bright" : "text-gray-400"}>P{index + 1}</span>
+                                <span className={isOccupied ? "text-brand-cream" : "text-gray-400"}>P{index + 1}</span>
                                 {isOccupied ? (
-                                    <span className="w-[88px] max-w-full truncate px-1 text-center text-brand" title={portSpecies || portPlant.name}>
+                                    <span className="w-[88px] max-w-full truncate px-1 text-center text-white" title={portSpecies || portPlant.name}>
                                         {portSpecies || portPlant.name}{isOn ? "" : " · OFF"}
                                     </span>
                                 ) : (
@@ -140,7 +175,7 @@ function DeviceCard({ device, onDelete, onPortClick, onOpenMonitoring }) {
                                         추가
                                     </span>
                                 )}
-                            </div>
+                            </button>
                         );
                     })}
                 </div>
@@ -184,21 +219,40 @@ function DeviceCard({ device, onDelete, onPortClick, onOpenMonitoring }) {
 function SortDropdown({ value, onChange }) {
     const [open, setOpen] = useState(false);
     const ref = useRef(null);
+    const triggerRef = useRef(null);
     const current = SORT_OPTIONS.find(option => option.key === value);
 
     useEffect(() => {
         if (!open) return;
+        ref.current?.querySelector('[role="option"]')?.focus();
         const close = (e) => {
             if (!ref.current?.contains(e.target)) setOpen(false);
         };
-        document.addEventListener("mousedown", close);
-        return () => document.removeEventListener("mousedown", close);
+        document.addEventListener("pointerdown", close);
+        return () => document.removeEventListener("pointerdown", close);
     }, [open]);
 
     return (
-        <div ref={ref} className="relative">
+        <div ref={ref} className="relative" onKeyDown={event => {
+            if (event.key === "Escape") {
+                setOpen(false);
+                triggerRef.current?.focus();
+            }
+            if (event.key === "Tab") setOpen(false);
+            if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+                event.preventDefault();
+                if (!open) { setOpen(true); return; }
+                const options = [...ref.current.querySelectorAll('[role="option"]')];
+                const index = options.indexOf(document.activeElement);
+                const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1
+                    : (index + (event.key === "ArrowUp" ? -1 : 1) + options.length) % options.length;
+                options[next]?.focus();
+            }
+        }}>
             <button
+                ref={triggerRef}
                 type="button"
+                aria-label={`기기 정렬: ${current.label}`}
                 aria-haspopup="listbox"
                 aria-expanded={open}
                 onClick={() => setOpen(v => !v)}
@@ -208,13 +262,15 @@ function SortDropdown({ value, onChange }) {
                 <img src={dropdownIcon} alt="" width="24" height="24" />
             </button>
             {open && (
-                <ul role="listbox" className="absolute left-0 top-[calc(100%+6px)] z-20 flex flex-col overflow-hidden rounded">
+                <ul role="listbox" aria-label="기기 정렬 기준" className="absolute left-0 top-[calc(100%+6px)] z-20 flex min-w-full flex-col overflow-hidden rounded">
                     {SORT_OPTIONS.filter(option => option.key !== value).map(({ key, label }) => (
-                        <li key={key} role="option" aria-selected="false">
+                        <li key={key} role="none">
                             <button
                                 type="button"
-                                onClick={() => { onChange(key); setOpen(false); }}
-                                className="w-28 whitespace-nowrap bg-gray-200 px-4 py-2 text-left text-body1 font-medium text-gray-600 hover:bg-gray-400 hover:text-black"
+                                role="option"
+                                aria-selected="false"
+                                onClick={() => { onChange(key); setOpen(false); triggerRef.current?.focus(); }}
+                                className="w-full min-w-28 whitespace-nowrap bg-gray-200 px-4 py-2 text-left text-body1 font-medium text-gray-600 hover:bg-gray-400 hover:text-black focus-visible:bg-gray-400 focus-visible:text-black focus-visible:outline-none"
                             >
                                 {label}
                             </button>
@@ -371,21 +427,20 @@ function HomePage() {
                 </div>
             </div>
 
-            {/* 전체 환경 요약 (기기가 있을 때만 — 기기가 없으면 Figma 17:2491처럼 빈 박스만) */}
+            {/* Figma 1:1687: 환경 요약 높이 76px, 모서리와 안쪽 여백 12px. */}
             {sortedDevices.length > 0 && (
-            <div className="flex shrink-0 flex-col gap-4 rounded-2xl bg-white p-5 lg:p-8 @[1080px]:h-[92px] @[1080px]:flex-row @[1080px]:items-center @[1080px]:gap-[76px] @[1080px]:py-0">
-                <p className="shrink-0 text-h4 font-bold text-gray-700 @[1080px]:w-36">전체 환경 요약</p>
-                {/* 넓을 때: 한 줄, 항목 사이 간격 48(Figma). 값이 길어지면 간격만 줄어듦 */}
-                <div className="flex flex-wrap items-center gap-x-12 gap-y-3 @[1080px]:flex-1 @[1080px]:flex-nowrap @[1080px]:justify-between @[1080px]:gap-x-0">
-                    {summaryItems.map(({ icon, label, value, gap }, index) => (
+            <div className="flex shrink-0 flex-col gap-3 rounded-xl bg-white p-3 @[1080px]:h-[76px] @[1080px]:flex-row @[1080px]:items-stretch">
+                <p className="flex shrink-0 items-center px-5 text-sub1 font-bold text-gray-700 @[1080px]:w-[192px]">전체 환경 요약</p>
+                <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded bg-gray-100 px-5 py-3 @[1080px]:min-w-0 @[1080px]:flex-1 @[1080px]:flex-nowrap @[1080px]:gap-x-4 @[1080px]:py-0">
+                    {summaryItems.map(({ icon, label, value }, index) => (
                         <Fragment key={label}>
-                            {index > 0 && <span className="hidden h-6 w-1 shrink-0 bg-gray-300 @[1080px]:block" />}
-                            <div className="flex shrink-0 items-center gap-2">
-                                <div className={`flex items-center ${gap}`}>
-                                    <img src={icon} alt="" width="28" height="28" />
-                                    <span className="w-[100px] text-h4 font-medium text-gray-500">{label}</span>
+                            {index > 0 && <span aria-hidden="true" className="hidden h-6 w-0.5 shrink-0 bg-gray-300 @[1080px]:block" />}
+                            <div className="flex shrink-0 items-center gap-4">
+                                <div className="flex items-center gap-1">
+                                    <img src={icon} alt="" width="24" height="24" />
+                                    <span className="whitespace-nowrap text-body1 font-medium text-gray-500">{label}</span>
                                 </div>
-                                <span className="min-w-16 whitespace-nowrap text-h4 font-bold text-brand">{value}</span>
+                                <span className="whitespace-nowrap text-sub1 font-bold text-brand">{value}</span>
                             </div>
                         </Fragment>
                     ))}

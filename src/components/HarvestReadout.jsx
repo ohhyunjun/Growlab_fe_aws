@@ -29,7 +29,6 @@ export default function HarvestReadout({ plant, prediction }) {
                         <p className="shrink-0 text-h2 font-bold text-gray-800">{date(value.expectedAt)}</p>
                         <span className="whitespace-nowrap text-body2 text-gray-600">{value.overdue ? "예상일 지남" : value.days === 0 ? "오늘" : `약 ${value.days}일 후`}</span>
                     </div>
-                    {value.stale && <p className="text-caption text-amber-700 mt-2">최근 촬영이 지연되어 이전 예측을 표시하고 있어요.</p>}
                 </>
             ) : <p className="text-body2 text-gray-600 py-2">{messages[value.status] || messages.WAITING_OBSERVATION}</p>}
         </section>

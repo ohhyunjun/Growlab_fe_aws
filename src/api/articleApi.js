@@ -1,9 +1,11 @@
 import axios from "axios";
-import { API_BASE } from "./config";
+import { API_BASE as ROOT_API_BASE } from "./config";
+
+const BASE_URL = ROOT_API_BASE;
 
 // 1. 인터셉터가 적용될 전용 인스턴스 생성
 const api = axios.create({
-    baseURL: API_BASE,
+    baseURL: BASE_URL,
     withCredentials: true
 });
 
@@ -13,8 +15,6 @@ api.interceptors.request.use((config) => {
     
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
-    } else {
-        console.warn("⚠️ 로컬 스토리지에 토큰이 없습니다!");
     }
     return config;
 }, (error) => {
@@ -27,9 +27,21 @@ api.interceptors.request.use((config) => {
 export const getArticlesApi = () => 
     api.get("/articles");
 
-// 상세 조회 
-export const getArticleDetailApi = (id) => 
-    api.get(`/articles/${id}`);
+// 같은 글의 동시 상세 요청은 하나의 조회로 처리한다.
+const pendingArticleDetails = new Map();
+export const getArticleDetailApi = (id) => {
+    const key = String(id);
+    const pending = pendingArticleDetails.get(key);
+    if (pending) return pending;
+
+    const request = api.get(`/articles/${id}`);
+    pendingArticleDetails.set(key, request);
+    const clear = () => {
+        if (pendingArticleDetails.get(key) === request) pendingArticleDetails.delete(key);
+    };
+    request.then(clear, clear);
+    return request;
+};
 
 // 게시글 생성 
 export const createArticleApi = (formData) =>
