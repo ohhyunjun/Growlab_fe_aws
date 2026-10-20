@@ -1,5 +1,6 @@
 import axios from "axios";
 import { API_BASE as ROOT_API_BASE } from "./config";
+import { createArticleDetailRequest } from "./articleDetailRequest.js";
 
 const BASE_URL = ROOT_API_BASE;
 
@@ -13,7 +14,7 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
     const token = localStorage.getItem("token");
     
-    if (token) {
+    if (token && !config.headers.has("Authorization")) {
         config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -27,21 +28,8 @@ api.interceptors.request.use((config) => {
 export const getArticlesApi = () => 
     api.get("/articles");
 
-// 같은 글의 동시 상세 요청은 하나의 조회로 처리한다.
-const pendingArticleDetails = new Map();
-export const getArticleDetailApi = (id) => {
-    const key = String(id);
-    const pending = pendingArticleDetails.get(key);
-    if (pending) return pending;
-
-    const request = api.get(`/articles/${id}`);
-    pendingArticleDetails.set(key, request);
-    const clear = () => {
-        if (pendingArticleDetails.get(key) === request) pendingArticleDetails.delete(key);
-    };
-    request.then(clear, clear);
-    return request;
-};
+// 같은 글이라도 계정이 다르면 별도 요청으로 조회한다.
+export const getArticleDetailApi = createArticleDetailRequest(api, () => localStorage.getItem("token"));
 
 // 게시글 생성 
 export const createArticleApi = (formData) =>
