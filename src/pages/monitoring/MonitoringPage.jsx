@@ -29,38 +29,35 @@ const SPECIES_EMOJI = {
 
 const getSensorKey = (serial) => `growlab_sensor_${serial}`;
 const getNoticeKey = (serial) => `growlab_notices_${serial}`;
+const adviceRequests = new Map();
 const emptySensorData = () => ({
     temperature: null, humidity: null, ph: null, tds: null, water_level_status: null,
 });
 
 // ── AI 조언 API 호출 ──────────────────────────────────────────
-const fetchAiData = async (deviceData, plantData, liveSensor) => {
+const fetchAiData = async (serialNumber) => {
     try {
         const token = localStorage.getItem("token");
-        const daysSincePlanted = plantData?.plantedAt
-            ? Math.floor((new Date() - new Date(plantData.plantedAt)) / (1000 * 60 * 60 * 24))
-            : null;
         const response = await fetch(`${API_BASE}/ai/advice`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-            body: JSON.stringify({
-                serialNumber: deviceData.serialNumber,
-                speciesId: plantData?.speciesId ?? null,
-                speciesName: plantData?.species || plantData?.speciesName || null,
-                temperature: liveSensor?.temperature ?? deviceData.temperature,
-                humidity: liveSensor?.humidity ?? deviceData.humidity,
-                ph: liveSensor?.ph ?? deviceData.ph,
-                ec: liveSensor?.tds ?? deviceData.ec,
-                waterLevel: liveSensor?.water_level_status ?? deviceData.waterLevel,
-                daysSincePlanted,
-                plantStage: plantData?.stageName || plantData?.plantStage || null,
-            })
+            body: JSON.stringify({ serialNumber })
         });
         const data = await response.json();
         return withoutGrowthSection(data.advice) || null;
     } catch {
         return null;
     }
+};
+
+// 개발 모드의 effect 재실행도 같은 기기의 진행 중인 GPT 요청 하나를 공유한다.
+const loadAiAdvice = (serialNumber) => {
+    if (adviceRequests.has(serialNumber)) return adviceRequests.get(serialNumber);
+    const request = fetchAiData(serialNumber).finally(() => {
+        if (adviceRequests.get(serialNumber) === request) adviceRequests.delete(serialNumber);
+    });
+    adviceRequests.set(serialNumber, request);
+    return request;
 };
 
 // ── Vision AI 분석 점수 계산 (센서 데이터 기반) ───────────────
@@ -433,13 +430,13 @@ function MonitoringPage() {
     const handleRefreshObservation = useCallback(() => setGrowthTrendRefresh(count => count + 1), []);
 
     // ── AI 재배 조언만 새로고침 (조언 텍스트) ────────────────────
-    const handleRefreshAdvice = useCallback(async (deviceData, plantData) => {
+    const handleRefreshAdvice = useCallback(async (deviceData) => {
         if (!deviceData) return;
         setAdviceAiLoading(true);
-        const advice = await fetchAiData(deviceData, plantData, sensorData);
+        const advice = await fetchAiData(deviceData.serialNumber);
         setAiAdvice(advice);
         setAdviceAiLoading(false);
-    }, [sensorData]);
+    }, []);
 
     // ── 1. 디바이스 + 부가 데이터 로드
     useEffect(() => {
@@ -522,19 +519,14 @@ function MonitoringPage() {
         fetchData();
     }, [serialNumber, perfRunId, targetPortIndex]);
 
-    // 포트를 바꾸면 그 포트의 품종과 생육 단계로 AI 조언을 다시 불러온다.
+    // 기기 공통 조언은 기기가 바뀔 때만 불러온다. 포트 선택과 센서 폴링은 재생성을 일으키지 않는다.
+    const adviceSerial = device?.serialNumber;
     useEffect(() => {
-        if (!device) return;
-        const plant = device.plants?.find(item => item.portIndex === selectedPort);
-        if (!plant) {
-            setAiAdvice(null);
-            setAdviceAiLoading(false);
-            return;
-        }
+        if (!adviceSerial) return;
         let active = true;
         setAiAdvice(null);
         setAdviceAiLoading(true);
-        measureMonitoringApi(perfRunId, "ai_advice", () => fetchAiData(device, plant, sensorData))
+        measureMonitoringApi(perfRunId, "ai_advice", () => loadAiAdvice(adviceSerial))
             .then(advice => {
                 if (!active) return;
                 setAiAdvice(advice);
@@ -545,7 +537,7 @@ function MonitoringPage() {
                 if (active) setAdviceAiLoading(false);
             });
         return () => { active = false; };
-    }, [device, selectedPort, perfRunId, sensorData.temperature !== null]);
+    }, [adviceSerial, perfRunId]);
 
     // ── 2. 예측 조회
     useEffect(() => {
@@ -1038,7 +1030,7 @@ function MonitoringPage() {
                                 <h2 className="text-body2 font-bold text-brand">AI 재배 조언</h2>
                             </div>
                             <button
-                                onClick={() => handleRefreshAdvice(device, selectedPlant)}
+                                onClick={() => handleRefreshAdvice(device)}
                                 disabled={adviceAiLoading}
                                 className="text-caption text-brand hover:text-brand-deep disabled:text-brand-olive underline transition-colors"
                             >
