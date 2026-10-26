@@ -4,7 +4,6 @@ const date = (value) => new Date(value).toLocaleDateString("ko-KR", { month: "lo
 const messages = {
     WAITING_OBSERVATION: "첫 촬영 기록을 기다리고 있어요.",
     WAITING_ANCHOR: "사진을 모아 예측 시작 단계를 확인하고 있어요.",
-    FEATURES_READY: "사진은 저장됐으며 수확일 계산을 다시 시도하고 있어요.",
     NO_DETECTION: "최근 사진에서 식물을 확인하지 못했어요. 카메라 위치를 확인해 주세요.",
     PORT_OFF: "이 포트는 꺼져 있어요. 다시 켜면 관측을 이어갑니다.",
     UNSUPPORTED_CROP: "이 품종의 수확기 예측은 아직 제공하지 않아요.",
