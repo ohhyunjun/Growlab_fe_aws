@@ -1,15 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { prepareGrowthTrend, growthComparison, describeSizeChange, describeComparison, currentSizeRatio } from "./growthEvidence.js";
+import { prepareGrowthTrend, growthComparison, describeSizeChange, describeComparison, currentSizeRatio, growthTrendPath } from "./growthEvidence.js";
 
 const point = day => ({ date: `2026-09-${day}`, elapsedDay: day, value: 0.02 });
 
-test("current size uses the combined box and green result only", () => {
+test("current size follows the server's consistent series metric", () => {
     assert.equal(currentSizeRatio({ measurement: "box_green", latestRatio: 0.42 }), 0.42);
-    assert.ok(Math.abs(currentSizeRatio({ measurement: "box", latestRatio: 0.8,
-        latestBoxRatio: 0.8, latestGreenRatio: 0.2 }) - (0.8 ** 0.7 * 0.2 ** 0.3)) < 1e-12);
     assert.equal(currentSizeRatio({ measurement: "box", latestRatio: 0.8,
-        latestBoxRatio: 0.8, latestGreenRatio: null }), null);
+        latestBoxRatio: 0.8, latestGreenRatio: 0.2 }), 0.8);
+    assert.equal(currentSizeRatio({ measurement: "box", latestRatio: 0.8,
+        latestBoxRatio: 0.8, latestGreenRatio: null }), 0.8);
+});
+
+test("a view change keeps the graph connected, including older break flags", () => {
+    assert.equal(growthTrendPath([{ value: .1 }, { value: .2 },
+        { value: .05, breakBefore: true }, { value: .06 }], i => i * 10, v => v * 100),
+    "M0.0 10.0 L10.0 20.0 L20.0 5.0 L30.0 6.0");
 });
 
 test("one day and two detected ports cannot create a growth gap", () => {

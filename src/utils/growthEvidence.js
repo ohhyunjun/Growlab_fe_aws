@@ -74,7 +74,8 @@ export function describeComparison(reference) {
 }
 
 export function currentSizeRatio(trend) {
-    if (trend?.measurement === "box_green" && Number.isFinite(trend.latestRatio)) {
+    if (["box", "box_green"].includes(trend?.measurement)
+        && Number.isFinite(trend.latestRatio) && trend.latestRatio > 0 && trend.latestRatio <= 1) {
         return trend.latestRatio;
     }
     const box = trend?.latestBoxRatio;
@@ -82,6 +83,17 @@ export function currentSizeRatio(trend) {
     if (!Number.isFinite(box) || box <= 0 || box > 1
         || !Number.isFinite(green) || green <= 0 || green > box + 0.01) return null;
     return box ** 0.7 * green ** 0.3;
+}
+
+// Connect valid observations even when the camera/view position changes.
+export function growthTrendPath(points, x, y) {
+    let path = "", started = false;
+    (points || []).forEach((point, index) => {
+        if (!Number.isFinite(point?.value)) { started = false; return; }
+        path += `${started ? "L" : "M"}${x(index).toFixed(1)} ${y(point.value).toFixed(1)} `;
+        started = true;
+    });
+    return path.trim();
 }
 
 export function prepareGrowthTrend(trend) {

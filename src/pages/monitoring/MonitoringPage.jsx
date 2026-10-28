@@ -16,7 +16,7 @@ import {
 } from "../../utils/monitoringPerformance";
 import { resolveRanges, scoreSensor } from "../../utils/sensorRange";
 import { deviceSensorRanges, sharedSensorStatus } from "../../utils/sharedEnvironment";
-import { prepareGrowthTrend, growthComparison, describeSizeChange, describeComparison, currentSizeRatio, SAME_SIZE_BAND_PERCENT } from "../../utils/growthEvidence";
+import { prepareGrowthTrend, growthComparison, describeSizeChange, describeComparison, currentSizeRatio, growthTrendPath, SAME_SIZE_BAND_PERCENT } from "../../utils/growthEvidence";
 import { withoutGrowthSection } from "../../utils/aiAdvice";
 
 const SPECIES_EMOJI = {
@@ -209,16 +209,7 @@ function GrowthTrendSvg({ points, peerPoints, color }) {
     const n = points.length;
     const st = n > 1 ? w / (n - 1) : w;
     const Y = v => h - 3 - ((v - mn) / r) * (h - 8);
-    const path = (arr) => {
-        let d = "", started = false;
-        (arr || []).forEach((pt, i) => {
-            const v = pt?.value;
-            if (v == null) { started = false; return; }
-            d += `${started ? "L" : "M"}${(i * st).toFixed(1)} ${Y(v).toFixed(1)} `;
-            started = true;
-        });
-        return d.trim();
-    };
+    const path = arr => growthTrendPath(arr, i => i * st, Y);
     const selfPath = path(points);
     const peerPath = path(peerPoints);
     const lastIdx = n - 1;
